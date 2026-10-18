@@ -5,7 +5,7 @@
 | `brief/` | Original task brief (`capex.md`) |
 | `reports/` | Deliverable 1 — assessment report (illustrative values only) |
 | `questionnaires/` | Deliverable 2 — unit-head questionnaire (`Chemical_Lab_*`) and analyst questionnaires for raw materials (`RM_Analyst_*`) and finished products (`FP_Analyst_*`) |
-| `data/` | Source workbooks and the generated lead-time catalogue (`Leadtime.md`) |
+| `data/` | Source workbooks, the purchasing raw-material list (`rawmaterials.md`, from usp48) and the generated lead-time catalogue (`Leadtime.md`) |
 | `tools/` | Conversion scripts (need `openpyxl`) |
 
 ## Regenerating outputs

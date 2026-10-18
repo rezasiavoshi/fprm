@@ -1,0 +1,506 @@
+# Raw materials
+
+- Calcium carbonate extra heavy
+- Purple Coneflower dry extra(Echinacea Purpurea)
+- Aerosil
+- all-rac-a-Tocopheryl Acetate Powder
+- Allura Red
+- Anhydrous Dibasic Calcium Phosphate
+- Apium Graveolens Extract
+- Apple Green R3030
+- Artichoke dry extract
+- Ascorbic Acid
+- Avicel 102
+- B-Carotene
+- Betadex Sulfobutly Ether Sodium
+- Betadex Sulfobutyl Ether Sodium
+- Biotin
+- Black Iron Oxide
+- BRILLIANT BLUE
+- Calcium Carbonate Extra Heavy
+- Calcium Carbonate Extre Heavy
+- CHOCOLATI BROWN HT
+- Choline bitartrate
+- Choline Chloride
+- Chromium Picolinate
+- Coated Ascorbic Acid
+- Coenzyme Q10
+- Coleus Forskohlii
+- Colloidal Silicon Dioxide
+- Cooper Gluconate
+- Copper Gluconate
+- Cranberry Extract
+- Croscarmellose Sodium
+- Crospovidone
+- Cyanocobalamin
+- Damiana Extract 10:1
+- D-Calcium Pantothenate
+- Devil's Claw Extract
+- Empty Hard Gelatin Capsule Shell
+- ERYTHROSINE
+- Fennel Seed Extract
+- Ferrous Fumarate
+- Flax Seeds Extract
+- Foil Brinux 90
+- Foil Vitamin C 150mg
+- Folic Acid
+- Garcinia Cambogia Extract
+- Gentian Root Extract
+- Ginger  Root Extract 5:1
+- Ginger Root Extract
+- Ginger Root Extract 5:1
+- Ginkgo Biloba L.
+- Glycerine 99.7%
+- Gymnema Sylvestre Extract
+- Hard Glatin Capsule
+- HPMC E6
+- HPMC K100
+- Hydroxypropyl Methyl Cellulose E15
+- Hydroxypropyl Methyl Cellulose E6
+- Hydroxypropyl Methylcellulose E6
+- Inositol
+- Juniper Communis Extract
+- Kovidone VA64
+- L-Arginine
+- L-Choline Bitartrate
+- Linagliptin
+- L-Methionine
+- Magnesium Oxide heavy
+- Magnesium Stearate
+- Manganese Sulfate Monohydrate
+- Mapcol Allura Red
+- MAPCOL ALLURA RED
+- Marshmallow
+- Metformin
+- Methyl  Paraben
+- Methyl Sulphonyl Methane
+- Microcrystalline Cellulose
+- Microcrystalline Cellulose (pH-101)
+- Microcrystalline Cellulose 101
+- Microcrystalline Cellulose 102
+- Microcrystalline Cellulose(PH-101)
+- Microcrystalline Cellulse 101
+- Neelicol Caramel
+- Orang Flavour
+- Panax Ginseng Extract
+- PEG 400
+- PEG 4000
+- Peppermint Extract
+- Polyethylene Glycol 4000
+- Potassium Iodide
+- Povidone
+- Povidone
+- Povidone (PVPK25)
+- Povidone (PVPK30)
+- Propyl Paraben
+- Pyridoxine Hydrochloride(Vitamin B6)
+- RED IRON OXIDE
+- SACHELAC®80
+- Siberian Ginseng Extract
+- Silica gel
+- Silymarin Extract
+- Sitagliptin Phosphate Monohydrate
+- Sodium  dodecyl Sulfate Ph Eur
+- Sodium algenate
+- Sodium Borate Decahydrate
+- Sodium dodecyl sulfate phEur
+- Sodium Selenite
+- Sodium Stearyl Fumarate
+- Sorbitol
+- Sour cherry Flavour
+- Spray Dirid Licorice Extract Powder
+- Strawberry Flavour
+- Sucralose
+- Sucralose+B650:L650
+- SUNSET YELLOW FCF
+- Talc USP
+- Talc-USP
+- Taurine
+- Titanium
+- Titanium Dioxide
+- Tribulus terrestris Extract
+- Vanilla Toffee
+- vitamin A Acetate 500 SD CWS/A
+- Vitamin A acetate Powder
+- Vitamin B1(Thiamin Hydrochloride)
+- Vitamin B12
+- Vitamin B2
+- Vitamin B3 (Nicotinamide)
+- Vitamin B5 (D-Calcium- Pantotenate)
+- Vitamin B6 ( Pyridoxine Hydrochloride)
+- Vitamin B9(Folic Acid)
+- Vitamin D3
+- Vitamin D3 Powder
+- Vitamin K1
+- Yellow Iron Oxide
+- Zinc Gluconate
+- رنگ کارامل
+- Black Coninor  E-172
+- Methyl Sulfonyl Methane (MSM)
+- PVP (K30)
+- Exacol Brown
+- Apple Green
+- Epimedium Extract
+- Xylitol
+- Garcinia Cambogia
+- PVP (K90)
+- Garcinia Cambogia (1)
+- Garcinia Cambogia (2)
+- Garcinia Cambogia (3)
+- Lactose Monohydrate 200 Mesh
+- Crosscarmellose Sodium
+- Lactose
+- Phenylephrine Hydrochloride
+- شکر دارویی
+- Sunset Yellow
+- Propylene Glycol
+- Caffeine
+- Corn Starch
+- Acetaminophen
+- Artichoke
+- HPMC
+- Polysorbate 80
+- Dapagliflozin Propandiol Monohydrate
+- Caramel Colour
+- Talc
+- Iron Bis Glycinate
+- Lactose Monohydrate 80 Mesh
+- Metformin Hydrochloride
+- Biotin (Vitamin B7)
+- Inositol (Vitamin B8)
+- Citric acid Anhydrous
+- Propan-2-ol
+- Menthol Crystals
+- Potassium Phosphate Monobasic
+- Mannitol
+- Sodium Lauryl Sulfate
+- Maltodextrin
+- Licorice Extract Powder
+- Stearic Acid
+- Colloidal Silicon Dioxide (Aerosil)
+- Calcium Pantothenate (Vitamin B5)
+- Flax Seeds Extract-Omega 3
+- Pyridoxin Hydrochloride (Vitamin B6)
+- Nicothinamide (Vitamin B3)
+- Microcrystalline celluose RC591
+- L-Cystine
+- Microcrystalline Cellulose (Avicel 102)
+- Sorbitol Liquid
+- Echinacea purpurea L
+- Sodium benzoate
+- beta-carotene powder
+- Marshmallow Root Extract
+- Artichoke extract powder
+- Devil`s Claw Extract
+- Thiamine Hydrochloride (Vit B1)
+- Calcium Carbonate (Heavy)
+- Sodium Borate Decahydrate
+- Crospovidone (Type A)
+- Folic Acid (Vitamin B9)
+- Empagliflozin
+- Coleus froskohlii Extract
+- Permix Optiwoman
+- Sodium Starch Glycolate
+- Povidone(PVP K30)
+- Ginger Extract
+- Potassium Sorbate
+- Tocopheryl Acetate 50%(Vitamin E)
+- Sodium Selenite
+- HPMC 15
+- Menthol
+- Riboflavine (Vitamin B2)
+- Nicotinamide (Vitamin B3)
+- Strawberry Flavor Liquid
+- Permix Energe-X
+- Permix Painlys
+- Coated Ascorbic Acid- 97 (Vitamin C)
+- Lactose
+- Melatonin
+- Sodium Carboxymethyl Cellulose (CMC)
+- Microcrystalline Cellulose (Avicel 112)
+- Glycerin
+- Silybum Marianum(Milk Thistle)
+- Juniper Extract
+- Potassium Hydroxide Solutin
+- Sodium Hydroxide granulated
+- PEG 4000
+- Blue color number 2
+- Compritol
+- Povidone(PVP K90)
+- Chlorpheniramine maleate
+- HPMC (K100M)
+- Eudragit
+- Acetaminophen DC 96%
+- Kollidon VA64
+- Silymarin Extract (Milk Thistle Extract)
+- Corn Starch 1500 (Pergelatinized)
+- Permix Dermobella
+- Permix Digestive Aid
+- Permix Burning Fat
+- Permix Healthy Liver
+- Permix Ginc Active
+- Permix Kamasotra
+- Permix Vitacal Forte
+- Permix Uromax
+- Permix Pregnalife
+- Permix Celer-X Forte
+- Permix X-Ade
+- Permix FerOral
+- Melatonin BP
+- Sacubitril-Valsartan 3Na Complex
+- Strawberry Flavor
+- Orange Flavor
+- Passion Flower Extract
+- Vitamin K1 5% Powder
+- Saw Palmetto Extract
+- Povidone K30
+- Coated Ascorbic Acid (Vitamin C)
+- Apixaban Granule 2.5%
+- Naproxen
+- Potassium Hydroxide Solutin(Liqiud)
+- Neotame
+- Acetaminophen
+- Acetaminophen DC
+- Alcohol 96% (Ethanol)
+- all-rac-a-Tocopheryl Acetate Powder (Vitamin E)
+- Amlodipine Besylate
+- Appel Green
+- Artichoke Exteract Powder
+- Azelastine Hydrochloride USP
+- Bempedoic Acid
+- Benzalkonim Chloride
+- Biotin (Vit B7)
+- Caramel Flavour
+- Chlorphenamine Maleate
+- Coleus Forskohlii Extract
+- Colloidal Silicon Dioxide(Aerosil)
+- Compritol 888 ATP
+- Cranberry Extract
+- Cyanocobalamin(Vit B12)
+- Damiana Extract
+- D-Calcium Pantothenate (Vit B5)
+- Dexlansoprazole Pellets 20 % w/w
+- Dicalcium Phosphate Anhydrous
+- Diphenhydramine HCL
+- Ethanol 96%
+- Ezetimibe
+- FD&C Red NO.40
+- Ferrous Bisglycinate
+- Fish Oil (Omega 3)
+- Fluticasone Propionate USP
+- Folic Acid (Vit B9)
+- Ginger Root Extract
+- Ginkgo Biloba Extract
+- Hard gelatin (Blue-Dark Blue) Size 1
+- Hard gelatin (Blue-Pink) Size 1
+- Hard gelatin (Yellow-Yellow) Size 2
+- Hard Gelatin Capsule (Brown)
+- Hard Gelatin Capsule(Red/Yellow)
+- Hard Gelatin Capsule(White/Blue)
+- Hard Gelatin Capsule(White/Yellow)
+- Hard Gelatin Capsule(Yellow/Yellow)
+- HPMC 6E
+- HPMC K15M
+- Hydrochlorothiazide
+- Inositol (Vit B8)
+- Lactose Monohydrate Granulac 80
+- Licorice Etraacted Powder
+- Lipofer
+- Loperamid Hydrochloride BP
+- Magnesiun Oxide,Heavy
+- Meglumine
+- Menthol Crystal
+- Metformin Hydrochloride USP
+- Methyl Paraben
+- Microcrystalline Cellose 101(Avicel 101)
+- Microcrystalline Cellose 101(Avicel 102)
+- Microcrystalline Cellulose (pH-102)
+- Microcrystalline Cellulose 101 (Avicel 101)
+- Microcrystalline Cellulose 102 (Avicel 102)
+- Mint Flavour (Powder)
+- Nicotinamide (Vit B3)
+- Orange Flavor (Powder)
+- Permix Prostica
+- Phenylethyl Alcohol
+- Polyethylene Glycol 4000 (PEG 4000)
+- Povidone K30 (PVP K30)
+- Propyl Paraben
+- Prucalopride Succinate
+- Ranolazine
+- Saiberian Ginseng Extract
+- Siberian Ginseng
+- Silica gel
+- Sodium Banzoate
+- Sodium Bicarbonate
+- Sodium Croscarmellose
+- Sorbitol Powder
+- Sweetmint Flavour
+- Telmisartan
+- Titanium Dioxide
+- Titriplex III
+- Triacetin
+- Trisodium Citrate Dihydrate
+- Tri-Sodium Citrate Dihydrate
+- Valerian Root Extract
+- Vanilla Flavor
+- Vitamin A Powder
+- Vitamin B2(Riboflavin)
+- Xanthan Gum(SUPER GELL 6010)
+- Zinc Gluconate
+- Ozonimod
+- Rosuvastatin Calcium
+- پلی اتیلن گلیکول 4000 (PEG4000)
+- Heavy Magnesium Oxide
+- Vitamin k2
+- L-choline Bitartarate
+- Garcinia Cimbogia
+- Citric Acid-Anhydrous
+- Vitamin k1-Sample
+- Hydroxy Propyl Methyl Cellulose
+- Flax seeds Extract
+- Gentian Root Extract
+- Valerian Root Extract
+- Apium Graveolens
+- Finerenone
+- Sacubitril Valsartan Sodium
+- Ranolazine
+- Maltodextrin
+- Caramel Color
+- Lemon Flavour
+- Vitamin B1 (Thiamine Hydrochloride)
+- Vitamin B3 (Nicotinamid)
+- Vitamin B6 (Pyridoxine Hydrochloride)
+- Vitamin B 5
+- Sodium Chloride
+- Hard Gelatin Capsule Brown Size 1
+- Sugar
+- Caramel Powder Color
+- Vitamin B 6- Food Grade
+- Coenzyme Q10 98%Coenzyme Q10
+- Ginseng Extract 10% Ginsenosides
+- CoatedAscorbic Acid
+- Ribflavin-B2
+- Talc (Drug Grade)
+- Croscarmellose Sodium-USP
+- Alcohol 96 %
+- Premix powder Optiwoman
+- Premix powder of Energex
+- Premix Powder of Painlys
+- Apium Graveolens Extract
+- Ginkgo Biloba Extract
+- Fennel seed Extract
+- Vitamin A Powder-50000
+- Biotin-B7
+- VITAMIN K1
+- FOLIC ACID-B9
+- VITAMIN B6
+- VITAMINB8(INOSITOL)
+- VITAMIN C COATED-97.05%
+- VITAMIN B2 (RIBOFLAVIN)
+- NICOTINAMIDE-B3
+- VITAMIN E
+- Premix Powder of Optiwoman
+- Premix Powder of Digestive Aid
+- Premix Powder of Burning Fat
+- Premix powder of healthy Liver
+- Premix Powder of Uromax
+- Premix Powder of Prostica
+- Premix Powder of Pregna Life
+- Premix Powder of Celerex
+- Premix Powder of X-Ade
+- Premix Powder of Dermobella
+- Sodium Bi carbonate
+- L-Arginine
+- Hypromellose-6
+- Sorbitol Liquid-70%
+- Microcrystalline Cellulose-101
+- Microcrystalline Cellulose-102
+- Povidone K90
+- BRILLIANT BLUE (POWDER)
+- Hydrochloricacid furming 37%
+- Vitamin B1 (Thiamine Hydrochloride)
+- Crospovidone- Type A
+- Citicoline Sodium
+- B-Nicotinamide Mononucleotide NMN Powder
+- Calcium Carbonate Heavy
+- Methylsulfonylmethane(MSM)
+- Licorice Extraacted Powder
+- Peppermint Root Extract
+- Levocarnitine
+- Ethanol
+- Dextromethorphan Hydrobromide
+- Potassium Sorbate Food Grade
+- Cola Flavour
+- HYDROXY PROPYL METHYL CELLULOSE-K4M
+- Resmetirom
+- Fumaric Acid
+- Xanthan Gum
+- Peppermint
+- Devil's Claw
+- Gentian Root
+- Ginger Root
+- Ginkgo Biloba
+- Saw Palmetto
+- Juniper Communis
+- Gymnema Sylvestre
+- Silymarin
+- Vitamin B2(Riboflavin )
+- Beta-Carotene-10%
+- Povidone-K30
+- Apium Graveolens
+- Royal Jelly Powder
+- Beta Carotene Powder-10%
+- Titriplex
+- Mint Flavour
+- Panax Ginseng Extract-10%
+- Vitamin D3 -100000
+- Marshmallow Root
+- Gymnema SylvestreExtract
+- L-Cholin Bitartrate
+- Vitamin A
+- D-Biotin
+- Vitamin B1
+- Vitamin B2(Riboflavin
+- L-Cystine
+- Methyl Sulfonyl Methane-MSM
+- Ethanol-96%
+- Apium
+- Flax Seeds
+- Hydroxy Propyl Methyl Cellulose-6
+- Methyl Sulfonyl Methane
+- Fish Oil
+- Lactose Monohydrate Mesh-80
+- Ascorbic Acid-Coated -97
+- Dicalcium Phosphate (Calcium Hydrogen Phosphate )
+- Permix Vitacl Forte
+- Dexlansoprazole Pellets 20.0% w/w
+- Talc
+- Microcrystalline 101
+- Hypromellose-E-15
+- Hypromellose-K4m
+- Apixaban micronized
+- Stawberry Flavour
+- FD&C RED No.40-ALLURA RED( E129)
+- BRILLIANT BLUE (POWDER)-No. 1
+- OXIDE IRON RED
+- GB Green C&F
+- Resmetirom -DC Granules 20 % w/w
+- Calcium Silicate
+- Mannitol 200 SD
+- Ethanol 96 %
+- Ferrous Bisglycinate-20% Iron
+- Vericiguat (VCG)
+- Vibegron-WB
+- Orforglipron hemicalcium (OGLG)
+- Potassium Sorbate
+- L Arginine Base
+- Naproxen Base
+- Linaclotide IR Pellets 0.09% w/w
+- Vonoprazan Fumarate  IH
+- Methacrylic Acid Ethyl Acrylate Copolymer-L100
+- Sodium Carbonate Anhydrous
+- All-rac-a-Tocopheryl Acetate powder(Vit-E)-50%
+- L-Methionine
+- Cyanocobalamin (Vitamin B12)
+- B-Nicotinamide Mononucleotide(NMN)
+- Panax Ginseng Extract 3% Ginsenosides

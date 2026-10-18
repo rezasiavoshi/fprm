@@ -3,9 +3,11 @@
 Pre-fills each questionnaire from:
   data/QC_Capacity_Study.xlsx  - item lists, tests and column layout (answers paste back 1:1)
   data/Leadtime.xlsx           - recorded RM test times (minutes), used as hints to confirm
+  data/rawmaterials.md         - raw-material names as purchased (usp48 export), checked against the study list
+  data/Product-Material-Database.xlsx - 'Name Mapping' sheet, source spelling -> study material name
 Usage: python3 tools/build_analyst_questionnaires.py [repo_root]
 """
-import re, sys, os, collections, openpyxl
+import re, sys, os, collections, difflib, openpyxl
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.worksheet.datavalidation import DataValidation
@@ -14,6 +16,8 @@ from openpyxl.utils import get_column_letter
 ROOT = sys.argv[1] if len(sys.argv) > 1 else "."
 STUDY = os.path.join(ROOT, "data/QC_Capacity_Study.xlsx")
 LEAD = os.path.join(ROOT, "data/Leadtime.xlsx")
+RAW = os.path.join(ROOT, "data/rawmaterials.md")
+DB = os.path.join(ROOT, "data/Product-Material-Database.xlsx")
 OUT = os.path.join(ROOT, "questionnaires")
 
 # Study material name -> Leadtime.xlsx name(s). Curated: automatic fuzzy matching gave false pairs
@@ -165,6 +169,49 @@ def match(study_names, lead):
             res[m] = ("Exact", by_norm[norm(m)])
         else:
             res[m] = ("Not in Leadtime.xlsx", [])
+    return res
+
+
+# rawmaterials.md names the fuzzy matcher pairs wrongly (different vitamin, likely HPMC E15 not K15M).
+NOT_SAME = {"Vitamin k2", "HPMC 15"}
+
+
+def load_raw():
+    """Unique names from rawmaterials.md (first spelling kept) with how often each normalised name occurs."""
+    seen = collections.OrderedDict()
+    for line in open(RAW, encoding="utf-8"):
+        if line.startswith("- ") and line[2:].strip():
+            n = re.sub(r"\s+", " ", line[2:].strip())
+            seen.setdefault(norm(n) or n, [n, 0])[1] += 1
+    return list(seen.values())
+
+
+def load_db_mapping():
+    wb = openpyxl.load_workbook(DB, read_only=True, data_only=True)
+    return {norm(r[0]): r[1] for r in wb["Name Mapping"].iter_rows(min_row=2, values_only=True) if r[0] and r[1]}
+
+
+def match_raw(raw, study_names, lead, dbmap):
+    """rawmaterials.md name -> (status, study name). Fuzzy hits are only suggestions (see ALIASES note)."""
+    by_norm = {norm(m): m for m in study_names}
+    via_alias = {norm(n): k for k, ns in ALIASES.items() for n in ns}
+    lead_norm = {norm(n) for n in lead}
+    res = []
+    for name, count in raw:
+        n = norm(name)
+        if n in by_norm:
+            st, m = "In study", by_norm[n]
+        elif n in via_alias:
+            st, m = "In study (Leadtime alias)", via_alias[n]
+        elif dbmap.get(n) in study_names:
+            st, m = "In study (DB name mapping)", dbmap[n]
+        elif name not in NOT_SAME and (close := difflib.get_close_matches(n, by_norm, 1, 0.85)):
+            st, m = "Suggested - confirm", by_norm[close[0]]
+        elif n in lead_norm:
+            st, m = "In Leadtime.xlsx only", None
+        else:
+            st, m = "Not in study", None
+        res.append((name, count, st, m))
     return res
 
 
@@ -352,9 +399,11 @@ FP_QUESTIONS = [RESPONDENT,
 ]
 
 
-def build_rm(s, lead):
+def build_rm(s, lead, raw, dbmap):
     mats = [r[0] for r in s["rm"]]
     m = match(mats, lead)
+    rm_raw = match_raw(raw, mats, lead, dbmap)
+    raw_st = collections.Counter(st for *_, st, _ in rm_raw)
     used = {n for _, names in m.values() for n in names}
     wb = Workbook()
     n_exact = sum(1 for k, _ in m.values() if k == "Exact")
@@ -363,7 +412,8 @@ def build_rm(s, lead):
     unlisted = [n for n in lead if n not in used]
     stats = [f"{len(mats)} materials and {sum(1 for r in s['tt'] if r[1] == 'RM')} material x test rows from QC_Capacity_Study.xlsx (RM_Lots, Test_Times).",
              f"Leadtime.xlsx: {n_exact} exact + {n_alias} alias name matches; {n_timed} materials have a recorded time to confirm.",
-             f"{len(unlisted)} materials appear in Leadtime.xlsx but not in the study list - see 'Other materials'."]
+             f"{len(unlisted)} materials appear in Leadtime.xlsx but not in the study list - see 'Other materials'.",
+             f"rawmaterials.md: {len(raw)} distinct names; " + ", ".join(f"{c} {k}" for k, c in raw_st.most_common()) + " - see 'Purchase list'."]
     overview(wb, "Raw Material Analyst Questionnaire", "QC Chemical Laboratory - raw materials (APIs, excipients, colorants, flavours, solvents)",
              [("Who fills it", "Each analyst who tests incoming raw materials (2-3 people). Each person fills a separate copy."),
               ("Time needed", "About 2 hours, plus reviewing the pre-filled tables.")],
@@ -371,7 +421,8 @@ def build_rm(s, lead):
               ("Volumes", "Lots received per year for each material."),
               ("Test times", "Time per test for each material - the core input."),
               ("Extra tests", "Tests missing from the list (GC residual solvents, KF as separate test, etc.)."),
-              ("Other materials", "Materials in Leadtime.xlsx that are not in the study list - still tested?")], stats)
+              ("Other materials", "Materials in Leadtime.xlsx that are not in the study list - still tested?"),
+              ("Purchase list", "Names from the purchasing list (rawmaterials.md) - confirm the study name, or say if still tested.")], stats)
 
     qsheet(wb.create_sheet("Questions"), RM_QUESTIONS, "Answer in the yellow column. Short answers are fine.")
 
@@ -415,7 +466,17 @@ def build_rm(s, lead):
     table(ws, 4, ["Material (as in Leadtime.xlsx)", "Leadtime sheet", "Recorded total h/lot", "Still tested? (Y/N)",
                   "Lots / yr", "Same material as (study name, if a duplicate)", "Notes"],
           rows, {4, 5, 6, 7}, [50, 10, 12, 12, 10, 36, 30], {"D": '"Y,N"'})
+    ws = wb.create_sheet("Purchase list")
+    title(ws, "Raw-material names from the purchasing list (rawmaterials.md)",
+          "Grey = matched automatically. Confirm 'Suggested' rows; for 'Not in study' rows say if QC still tests it and give lots/yr.")
+    order = {"Suggested - confirm": 0, "Not in study": 1, "In Leadtime.xlsx only": 2}
+    rows = [[n, c, st, sm, None, None, None, None]
+            for n, c, st, sm in sorted(rm_raw, key=lambda x: (order.get(x[2], 3), x[0].lower()))]
+    table(ws, 4, ["Name (as in rawmaterials.md)", "Times listed", "Match to study", "Study material",
+                  "Correct study name (if wrong / missing)", "Still tested by QC? (Y/N)", "Lots / yr", "Notes"],
+          rows, {5, 6, 7, 8}, [44, 8, 24, 40, 36, 12, 10, 30], {"F": '"Y,N"'})
     return wb, dict(mats=len(mats), exact=n_exact, alias=n_alias, timed=n_timed, unlisted=len(unlisted),
+                    raw=len(raw), raw_st=raw_st,
                     rows=sum(1 for r in s["tt"] if r[1] == "RM"), m=m,
                     cats=collections.Counter(r[1] for r in s["rm"]))
 
@@ -499,7 +560,8 @@ def write_md(path, title_, area, who, sheets, facts, sections, extra):
          "`questionnaires/Chemical_Lab_Questionnaire.md`.", "",
          f"- **Area:** {area}", f"- **Who fills it:** {who}",
          f"- **Working file:** `{os.path.basename(path)[:-3]}.xlsx` — the tables are only in the workbook; this page lists the questions and explains the sheets.",
-         "- **Generated by:** `tools/build_analyst_questionnaires.py` from `data/QC_Capacity_Study.xlsx` and `data/Leadtime.xlsx`. Re-run it after the source workbooks change.", "",
+         "- **Generated by:** `tools/build_analyst_questionnaires.py` from `data/QC_Capacity_Study.xlsx`, `data/Leadtime.xlsx`, "
+         "`data/rawmaterials.md` and `data/Product-Material-Database.xlsx`. Re-run it after the source files change.", "",
          "## How the answers are used", "",
          "Every table keeps the column order of the matching sheet in `QC_Capacity_Study.xlsx`, so answers are pasted back "
          "without re-typing, and the study's `Capacity` sheet then shows utilisation and the staffing/instrument gap. "
@@ -513,8 +575,8 @@ def write_md(path, title_, area, who, sheets, facts, sections, extra):
 
 
 def main():
-    s, lead = load_study(), load_leadtime()
-    rm_wb, rm = build_rm(s, lead)
+    s, lead, raw = load_study(), load_leadtime(), load_raw()
+    rm_wb, rm = build_rm(s, lead, raw, load_db_mapping())
     fp_wb, fp = build_fp(s)
     rm_wb.save(os.path.join(OUT, "RM_Analyst_Questionnaire.xlsx"))
     fp_wb.save(os.path.join(OUT, "FP_Analyst_Questionnaire.xlsx"))
@@ -526,14 +588,17 @@ def main():
               ("Volumes", "Lots/yr now and future, supplier/pharmacopoeia, number of suppliers, reduced-testing status per material."),
               ("Test times", f"{rm['rows']} material × test rows. Confirm or correct the recorded Leadtime.xlsx time shown on the right."),
               ("Extra tests", "Add tests that are missing (GC residual solvents, KF as a separate test, ICP)."),
-              ("Other materials", f"{rm['unlisted']} materials in Leadtime.xlsx not in the study list: still tested? lots/yr?")],
+              ("Other materials", f"{rm['unlisted']} materials in Leadtime.xlsx not in the study list: still tested? lots/yr?"),
+              ("Purchase list", f"{rm['raw']} distinct names from `rawmaterials.md`: confirm suggested study names; for unlisted ones, still tested? lots/yr?")],
              [f"{rm['mats']} materials: " + ", ".join(f"{c} {n}" for n, c in rm["cats"].most_common()) + ".",
               f"Names matched to `Leadtime.xlsx`: {rm['exact']} exact, {rm['alias']} via a curated alias list (marked *Alias – confirm*), "
               f"{len(no_match)} not found. {rm['timed']} materials carry a recorded time.",
               "Recorded times are per test set in minutes and include unattended oven/instrument time; they are shown in hours as a "
               "starting point only. Where a material has several supplier variants, the longest time is shown.",
               "Leadtime.xlsx specific-test time is shown on the *Assay + related substances* row; general-test time on the "
-              "*Other compendial tests* row; excipients show the total on their single *Compendial tests* row."],
+              "*Other compendial tests* row; excipients show the total on their single *Compendial tests* row.",
+              f"`rawmaterials.md` (purchasing list, {rm['raw']} distinct names): " + ", ".join(f"{c} {k.lower()}" for k, c in rm["raw_st"].most_common())
+              + ". Matches use exact spelling, the Leadtime alias list, the database's *Name Mapping* sheet, then a fuzzy suggestion that must be confirmed."],
              RM_QUESTIONS,
              ["### Materials with no match in Leadtime.xlsx", "",
               "These need a fresh time estimate (or the Leadtime.xlsx name, if it exists under another name):", "",
@@ -555,7 +620,7 @@ def main():
              ["### Most-shared actives (campaign candidates)", "", "| Active | Families |", "|---|---|"]
              + [f"| {a} | {f} |" for a, _, f, *_ in fp["camp"][:12]] + [""])
     print(f"RM: {rm['mats']} materials, {rm['rows']} test rows, exact {rm['exact']}, alias {rm['alias']}, "
-          f"none {len(no_match)}, timed {rm['timed']}, other {rm['unlisted']}")
+          f"none {len(no_match)}, timed {rm['timed']}, other {rm['unlisted']}; purchase list {rm['raw']}: {dict(rm['raw_st'])}")
     print(f"FP: {fp['products']} products, {fp['fams']} families, {fp['rows']} test rows, {len(fp['camp'])} shared actives")
     missing = [(k, n) for k, ns in ALIASES.items() for n in ns if n not in lead]
     if missing:
