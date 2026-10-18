@@ -4,12 +4,13 @@ Pre-fills each questionnaire from:
   data/QC_Capacity_Study.xlsx  - item lists, tests and column layout (answers paste back 1:1)
   data/Leadtime.xlsx           - recorded RM test times (minutes), used as hints to confirm
   data/rawmaterials.md         - raw-material names as purchased (usp48 export), checked against the study list
+  data/usp_tests.csv           - RM compendial tests per material, flattened from USP-NF (tools/usp_tests.py)
   data/Product-Material-Database.xlsx - 'Name Mapping' sheet, source spelling -> study material name
 The questionnaires are self-contained: respondent-facing text never names these files or their sheets,
 so a respondent needs only the questionnaire. Column order still matches the study for paste-back.
 Usage: python3 tools/build_analyst_questionnaires.py [repo_root]
 """
-import re, sys, os, collections, difflib, openpyxl
+import re, sys, os, csv, collections, difflib, openpyxl
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.worksheet.datavalidation import DataValidation
@@ -20,6 +21,7 @@ STUDY = os.path.join(ROOT, "data/QC_Capacity_Study.xlsx")
 LEAD = os.path.join(ROOT, "data/Leadtime.xlsx")
 RAW = os.path.join(ROOT, "data/rawmaterials.md")
 DB = os.path.join(ROOT, "data/Product-Material-Database.xlsx")
+USP_TESTS = os.path.join(ROOT, "data/usp_tests.csv")   # tools/usp_tests.py
 OUT = os.path.join(ROOT, "questionnaires")
 
 # Study material name -> Leadtime.xlsx name(s). Curated: automatic fuzzy matching gave false pairs
@@ -112,6 +114,39 @@ ALIASES = {
     "Sodium Citrate Dihydrate": ["Sodium Citrate"],
     "Benzalkonium Alcohol 50%": ["Benzalkonium Chloride"],
 }
+
+# Catalog of general tests: timed once on the 'Test catalog' sheet. code -> (name, study instrument, lab catalog names)
+USP_CATALOG = collections.OrderedDict([
+    ("APPEAR", ("Appearance / description and solubility", "Other / bench", ["Description", "Soluibility"])),
+    ("ID_IR", ("Identification - IR spectrum", "Other / bench", [])),
+    ("ID_UV", ("Identification - UV spectrum", "UV-Vis", [])),
+    ("ID_CHEM", ("Identification - chemical reaction (incl. <191>)", "Other / bench", [])),
+    ("TLC", ("TLC (identification or limit)", "Other / bench", ["TLC (drug)"])),
+    ("LOD", ("Loss on drying", "Other / bench", ["LOD (60 min)"])),
+    ("KF", ("Water - Karl Fischer", "KF titrator", ["Water content"])),
+    ("ROI", ("Residue on ignition / sulfated ash", "Other / bench", ["Ash"])),
+    ("LOI", ("Loss on ignition", "Other / bench", [])),
+    ("ASH", ("Total / acid-insoluble ash (botanical)", "Other / bench", ["Ash"])),
+    ("PH", ("pH", "Other / bench", ["pH"])),
+    ("ACID", ("Acidity / alkalinity (indicator titration)", "Other / bench", ["Acidity/Alkalinity"])),
+    ("OR", ("Optical rotation", "Other / bench", ["Optical rotation"])),
+    ("MP", ("Melting range", "Other / bench", ["Melting point"])),
+    ("SG", ("Specific gravity / density", "Other / bench", ["SPECIFIC GRAVITY"])),
+    ("RI", ("Refractive index", "Other / bench", [])),
+    ("VISC", ("Viscosity", "Other / bench", [])),
+    ("COND", ("Conductivity", "Other / bench", ["Conductivity"])),
+    ("TOC", ("Total organic carbon", "Other / bench", [])),
+    ("CLAR", ("Clarity / colour of solution", "Other / bench", ["Clarity of solution", "Color of Solution"])),
+    ("LIMIT", ("Limit test - wet chemistry (chloride, sulfate, iron, arsenic, ...)", "Other / bench", ["Chloride", "Sulfate"])),
+    ("GRAV", ("Gravimetric limit (water-soluble, insoluble matter, residue on evaporation)", "Other / bench", ["Residue on evaporation"])),
+    ("AAS", ("Element limit by AAS / ICP (Pb, Cd, Ni, Al, ...)", "AAS / ICP", [])),
+    ("TITR", ("Assay or test by titration", "Other / bench", [])),
+    ("UV", ("Assay or limit by UV-Vis", "UV-Vis", [])),
+    ("FATS", ("Fats and oils value (acid, iodine, peroxide, saponification, hydroxyl)", "Other / bench", ["Acid value", "Peroxide value"])),
+    ("PHYS", ("Powder physical test (bulk density, surface area, settling volume)", "Other / bench", ["Density Bulk", "Settling volume"])),
+    ("RS_GC", ("Residual solvents by GC (<467>, <565>)", "GC", [])),
+    ("PEST", ("Pesticide residues (<561>, <565>)", "GC", [])),
+])
 
 HEAD = PatternFill("solid", fgColor="1F4E78")
 INPUT = PatternFill("solid", fgColor="FFF2CC")   # yellow = you type (same as the study)
@@ -356,27 +391,22 @@ def help_rows(ws, r, lines):
 
 
 # ---------------------------------------------------------------- RM
-RM_QUESTIONS = [RESPONDENT,
+RM_QUESTIONS = [("A. Respondent", [RESPONDENT[1][0],
+        ("A2", "Which techniques/instruments are you qualified on (HPLC, GC, UV-Vis, AAS/ICP, KF, titration, IR)?", "Personnel C; Test_Times X")]
+        + RESPONDENT[1][2:5]),
     ("B. Receipt and sampling", [
-        ("B1", "Who samples incoming materials in the warehouse (QC analyst, sampler, warehouse)? Hours per week of QC time spent on sampling and walking to the warehouse.", "Capacity C (non-routine)"),
-        ("B2", "How many lots arrive in a typical month, and in the peak month? Are receipts bunched (e.g. end of quarter)?", "RM_Lots D; Evidence B"),
-        ("B3", "Is reduced testing used for qualified suppliers (ID only + CoA, skip-lot)? For which materials/categories?", "Test_Times F (Applicable)"),
-        ("B4", "How many supplier qualifications (full testing of 3 lots of a new supplier) per year? Hours each?", "Capacity C"),
-        ("B5", "Which materials are re-tested at re-test date / expiry extension? Lots per year?", "RM_Lots H; Capacity C"),
+        ("B1", "Who samples incoming materials (QC analyst, sampler, warehouse)? QC hours per week spent on sampling, including walking to the warehouse.", "Capacity C (non-routine)"),
+        ("B2", "Which months have the most receipts, and about how many lots arrive in the peak month? (Lots per year per material go on 'Materials'.)", "Evidence B"),
+        ("B3", "Which materials are re-tested at re-test date or for shelf-life extension? Lots per year?", "RM_Lots H; Capacity C"),
     ]),
-    ("C. Methods and instruments", [
-        ("C1", "Which RM tests use GC (residual solvents, assay)? Lots/yr and instrument hours per sample.", "Extra tests; Instruments"),
-        ("C2", "KF / LOD / titration: how many samples per day can one analyst handle? Is the KF titrator a bottleneck?", "Test_Times K-T"),
-        ("C3", "Herbal extracts and premixes (multi-assay): how many separate HPLC methods does one lot need, and can they share a sequence?", "Test_Times I, J"),
-        ("C4", "When the pharmacopoeia changes a monograph, how many hours to update and verify the method? How often per year?", "Capacity C"),
-        ("C5", "How many days per month is each instrument you use down (breakdown, calibration, waiting for parts/columns/reagents)?", "Settings downtime"),
-        ("C6", "Do you wait for a free HPLC/GC? How often per week and for how long?", "Evidence; Notes"),
+    ("C. Instruments", [
+        ("C1", "Which instrument do you wait for most (HPLC, GC, KF, AAS, oven)? How often per week, and how long each time?", "Evidence; Notes"),
     ]),
     ("D. Workload and service level", [
         ("D1", "Target turnaround from receipt to release (days) and actual typical turnaround. Has production ever waited for a raw material release?", "Evidence E, F, G"),
         ("D2", "How many lots are typically waiting (in quarantine, not yet tested) at month end?", "Evidence D"),
-        ("D3", "Which materials are new or will be added in the next 2-3 years (new products, new suppliers)?", "RM_Lots E; Settings growth"),
-        ("D4", "Non-routine work: OOS investigations, supplier complaints, method verification, R&D samples. Hours per year?", "Capacity C"),
+        ("D3", "Non-routine work - give number per year and hours each for: (a) new-supplier qualification (full testing of 3 lots); "
+               "(b) method update and verification after a monograph change; (c) OOS investigations; (d) supplier complaints; (e) R&D or trial samples.", "Capacity C"),
     ]),
     ("E. Closing", [
         ("E1", "If you had one more analyst or one more instrument, what would change first?", "Report_Outline"),
@@ -413,86 +443,203 @@ FP_QUESTIONS = [RESPONDENT,
 ]
 
 
+def load_lead_catalog():
+    """Lab general-test catalog (first Leadtime sheet): name -> [minutes] (a name can occur twice)."""
+    wb = openpyxl.load_workbook(LEAD, read_only=True, data_only=True)
+    out = collections.defaultdict(list)
+    for r in wb.worksheets[0].iter_rows(min_row=2, values_only=True):
+        if r[0] and num(r[1]) is not None:
+            out[cell(r[0])].append(r[1])
+    return out
+
+
+def load_usp_tests():
+    """data/usp_tests.csv (tools/usp_tests.py) -> material -> (monograph, mapped_by, [test rows])."""
+    out = {}
+    if not os.path.exists(USP_TESTS):
+        return out
+    for r in csv.DictReader(open(USP_TESTS, encoding="utf-8")):
+        mono, how, tests = out.setdefault(r["material"], (r["monograph"], r["mapped_by"], []))
+        if r["test"]:
+            tests.append(r)
+    return out
+
+
+# Coarse test groups used to compare the USP test list with the lab's recorded test list.
+GROUPS = [("ID", r"identif|\bid\b|\bir\b|infrared|\btlc\b"), ("Assay", r"assay|content of"),
+          ("Impurities", r"impurit|related|purity"), ("LOD", r"loss on drying|\blod\b"),
+          ("Water (KF)", r"water (determination|content)|\bkf\b|karl|moisture"),
+          ("ROI / ash", r"\broi\b|residue on ignition|sul(f|ph)ated? ash|\bash\b"), ("pH", r"\bph\b"),
+          ("Optical rotation", r"optical|rotation"), ("Melting", r"melting"),
+          ("Heavy metals / elements", r"heavy metal|\blead\b|arsenic|mercury|cadmium|nickel|\bpb\b"),
+          ("Chloride / sulfate", r"chloride|sul(f|ph)ate(?!d? ash)"), ("Clarity / colour", r"clarity|colou?r of"),
+          ("Viscosity", r"viscos"), ("Specific gravity", r"specific gravity|relative density"), ("Refractive index", r"refractive")]
+
+
+def groups(text):
+    return {g for g, rx in GROUPS if re.search(rx, text.lower())}
+
+
+def usp_groups(tests):
+    g = set()
+    for t in tests:
+        g |= groups(t["test"])
+        g |= {"ID"} if t["section"] == "Identification" else set()
+        g |= {"Assay"} if t["section"] == "Assay" else set()
+        g |= {"Impurities"} if t["section"] == "Impurities" and t["technique"] in ("HPLC", "GC") else set()
+    return g
+
+
+RM_TIMES_HELP = [
+    "One row per material x compendial test, taken from the USP-NF monograph. Set 'Applicable' = N for tests you do not run "
+    "on that material; add tests that are missing on the 'Extra tests' sheet.",
+    "Grey times are linked to the 'Test catalog' sheet, where each general test is timed once. Type over a grey time only "
+    "if this material really takes different time.",
+    "Yellow times: material-specific HPLC/GC tests, and materials without a monograph. Hours per sample; give MIN / MOST "
+    "LIKELY / MAX for preparation. Analyst time = hands-on only; unattended instrument time goes in 'Instrument run'.",
+    TIMES_HELP[4],
+]
+CAT_H = ["Code", "Test", "Instrument", "Rows using it", "Lab catalog time (min)", "Setup analyst h / sequence",
+         "Setup instrument h / sequence", "Prep analyst h/sample – MIN", "Prep – MOST LIKELY", "Prep – MAX",
+         "Instrument run h / sample", "Data processing + doc h / sample", "Review h / sample", "Samples per sequence / run", "Notes"]
+CAT_LINK = {11: "F", 12: "G", 13: "H", 14: "I", 15: "J", 17: "K", 19: "L", 20: "M", 21: "N"}  # Test times col -> catalog col
+SPECIFIC = {"HPLC", "GC"}
+
+
 def build_rm(s, lead, raw, dbmap):
     mats = [r[0] for r in s["rm"]]
     m = match(mats, lead)
     rm_raw = match_raw(raw, mats, lead, dbmap)
     raw_st = collections.Counter(st for *_, st, _ in rm_raw)
     used = {n for _, names in m.values() for n in names}
-    wb = Workbook()
-    n_exact = sum(1 for k, _ in m.values() if k == "Exact")
-    n_alias = sum(1 for k, _ in m.values() if k.startswith("Alias"))
-    n_timed = sum(1 for _, names in m.values() if agg(names, lead, "t"))
     unlisted = [n for n in lead if n not in used]
-    stats = [f"{len(mats)} materials on the master list and {sum(1 for r in s['tt'] if r[1] == 'RM')} material x test rows.",
-             f"Lab time records: {n_exact} exact + {n_alias} alias name matches; {n_timed} materials have a recorded time to confirm.",
-             f"{len(unlisted)} materials have recorded times but are not on the master list - see 'Other materials'.",
-             f"Purchasing list: {len(raw)} distinct names; " + ", ".join(f"{c} {k.lower()}" for k, c in raw_st.most_common()) + " - see 'Purchase list'."]
+    usp = load_usp_tests()
+    labcat = load_lead_catalog()
+    wb = Workbook()
+
+    # ---- Test times rows (built first: the catalog needs the row counts)
+    tt_study = collections.defaultdict(list)
+    for r in tt_rows([r for r in s["tt"] if r[1] == "RM"]):
+        tt_study[r[0]].append(r)
+    tt, codes = [], collections.Counter()
+    for r in s["rm"]:
+        mat, cat = r[0], r[1]
+        mono, how, tests = usp.get(mat, (None, "none", []))
+        if tests:
+            for code, test, instr, src in [("APPEAR", "Appearance / description and solubility", "Other / bench", "Lab practice (not a USP test)")] + \
+                    [(t["code"], t["test"], t["technique"] if t["code"] == "" else USP_CATALOG[t["code"]][1],
+                      f"{mono} · {t['section']}" + (f" <{t['chapter']}>" if t["chapter"] else "")) for t in tests]:
+                t = next((x for x in tests if x["test"] == test), {})
+                row = [mat, "RM", cat, test, None, t.get("applicable", "Y"), instr,
+                       "Medium" if instr in SPECIFIC else "Low", 1] + [None] * 13 + ["N", None, None, t.get("note") or None]
+                tt.append((row, code, [code or None, src, None, None]))
+                codes[code] += bool(code)
+        else:
+            k, names = m[mat]
+            for row in tt_study[mat]:
+                test = row[3]
+                key, cov = ("s", "specific tests") if test.startswith("Assay") else (("g", "general tests") if test.startswith("Other compendial") else ("t", "all tests"))
+                tl = "; ".join(sorted({lead[n]["st" if key == "s" else "gt"] for n in names} - {"", "-"})) if key != "t" \
+                    else "; ".join(sorted({lead[n]["gt"] + " | " + lead[n]["st"] for n in names}))
+                tt.append((row, "", [None, "No USP-NF monograph - in-house / supplier spec", agg(names, lead, key), tl[:250] or None]))
+
+    # ---- Overview + Questions
+    n_mapped = sum(1 for mat in mats if usp.get(mat, (0, 0, []))[2])
+    nonmaster = [x for x in rm_raw if x[2] in ("Not on master list", "In time records only")]
+    stats = [f"{len(mats)} materials on the master list; {n_mapped} have a USP-NF monograph, so their tests are listed one per row "
+             f"({len(tt)} material x test rows in total).",
+             f"{len(USP_CATALOG)} general tests are timed once on 'Test catalog'; the material rows link to them.",
+             "Materials without a monograph keep the lab's recorded time per test set as a starting point."]
     overview(wb, "Raw Material Analyst Questionnaire", "QC Chemical Laboratory - raw materials (APIs, excipients, colorants, flavours, solvents)",
              [("Who fills it", "Each analyst who tests incoming raw materials (2-3 people). Each person fills a separate copy."),
-              ("Time needed", "About 2 hours, plus reviewing the pre-filled tables.")],
-             [("Questions", "Respondent profile, receipt & sampling, methods, workload."),
-              ("Volumes", "Lots received per year for each material."),
-              ("Test times", "Time per test for each material - the core input."),
-              ("Extra tests", "Tests missing from the list (GC residual solvents, KF as separate test, etc.)."),
-              ("Other materials", "Materials with recorded lab times that are not on the master list - still tested?"),
-              ("Purchase list", "Names from the purchasing list - confirm the master-list name, or say if still tested.")], stats)
-
+              ("Time needed", "About 2 hours: questions 20 min, test catalog 30 min, the rest on the tables.")],
+             RM_SHEETS, stats)
     qsheet(wb.create_sheet("Questions"), RM_QUESTIONS, "Answer in the yellow column. Short answers are fine.")
 
-    ws = wb.create_sheet("Volumes")
-    title(ws, "Lots received and tested per year", "One row per material on the master list; use the filter.")
+    # ---- Materials (master list + purchase list + time records, one row per name)
+    ws = wb.create_sheet("Materials")
+    title(ws, "Materials and lots per year",
+          "Master-list materials first, then names found only in the purchase list or the lab time records. "
+          "For those: still tested by QC? If yes, give lots/yr and the master-list name if it is the same material.")
+    also = collections.defaultdict(set)
+    for name, _, st, sm in rm_raw:
+        if sm and st.startswith("On master list"):
+            also[sm].add(name)
     rows = []
     for r in s["rm"]:
-        k, names = m[r[0]]
-        rows.append(list(r[:5]) + [None] + list(r[6:8]) + [None, None, k, "; ".join(names), agg(names, lead, "t")])
-    hdr = s["rm_h"] + ["Suppliers (number)", "Reduced testing? (none / ID+CoA / skip-lot)",
-                       "Match to lab time records", "Name(s) in lab time records", "Recorded total h/lot (worst supplier variant)"]
-    table(ws, 4, hdr, rows, {4, 5, 7, 8, 9, 10}, [34, 18, 10, 10, 12, 1, 22, 30, 10, 18, 16, 40, 12],
-          {"J": '"None,ID + CoA,Skip-lot"'})
+        mat = r[0]
+        k, names = m[mat]
+        mono, how, tests = usp.get(mat, (None, "none", []))
+        rec = " ".join(lead[n]["gt"] + " " + lead[n]["st"] for n in names)
+        miss = extra = None
+        if tests and rec.strip(" -"):
+            ug, rg = usp_groups(tests), groups(rec)
+            if not any(lead[n]["st"].strip(" -") for n in names):   # no specific-test list on record
+                ug -= {"Assay", "Impurities"}
+            miss, extra = ", ".join(g for g, _ in GROUPS if g in ug - rg) or "-", ", ".join(g for g, _ in GROUPS if g in rg - ug) or "-"
+        mono_txt = (mono + (" (confirm)" if how in ("manual", "purchase list") else "")) if tests else "None - in-house / supplier spec"
+        rows.append(list(r[:5]) + [None] + list(r[6:8]) + [None, None, "Master list", None, None,
+                    "; ".join(sorted((also[mat] | set(names)) - {mat}, key=str.lower))[:300] or None,
+                    mono_txt, agg(names, lead, "t"), miss, extra])
+    other = collections.OrderedDict()
+    for n in unlisted:
+        other[norm(n)] = dict(name=n, src={"time records"}, also=set(), h=round(lead[n]["t"] / 60, 2) if lead[n]["t"] else None)
+    for name, _, st, sm in rm_raw:
+        if st in ("Not on master list", "In time records only"):
+            e = other.setdefault(norm(name), dict(name=name, src=set(), also=set(), h=None))
+            e["src"].add("purchase list")
+            if name != e["name"]:
+                e["also"].add(name)
+    sugg = [[name] + [None] * 9 + ["Suggested - confirm", sm] + [None] * 6
+            for name, _, st, sm in sorted(rm_raw, key=lambda x: x[0].lower()) if st == "Suggested - confirm"]
+    rest = [[e["name"]] + [None] * 9 + ["Not on master list (" + " + ".join(sorted(e["src"])) + ")", None, None,
+            "; ".join(sorted(e["also"])) or None, None, e["h"], None, None]
+            for e in sorted(other.values(), key=lambda e: e["name"].lower())]
+    new = [[None] * 10 + ["New - add name", None, "Y"] + [None] * 5 for _ in range(10)]
+    hdr = s["rm_h"] + ["Suppliers (number)", "Reduced testing? (none / ID+CoA / skip-lot)", "Status",
+                       "Same material as (master-list name)", "Still tested by QC? (Y/N)", "Also listed as",
+                       "USP-NF monograph", "Recorded h/lot (lab records, worst supplier)",
+                       "USP tests not in lab record", "Lab-record tests not in USP"]
+    table(ws, 4, hdr, rows + sugg + rest + new, {4, 5, 7, 8, 9, 10, 12, 13},
+          [34, 16, 9, 10, 12, 1, 20, 26, 10, 16, 22, 30, 10, 36, 30, 11, 22, 22], {"J": '"None,ID + CoA,Skip-lot"', "M": '"Y,N"'})
+    for i in range(len(rows) + len(sugg) + len(rest) + 1, len(rows) + len(sugg) + len(rest) + 11):
+        ws.cell(4 + i, 1).fill = INPUT
 
+    # ---- Test catalog
+    ws = wb.create_sheet("Test catalog")
+    title(ws, "General tests - time each one once",
+          "These times are used for every material row that links to the test. Hours per sample unless the header says per sequence.")
+    cat_rows = [[code, name, instr, codes[code], "; ".join(f"{n} {', '.join(str(v) for v in labcat[n])}" for n in lab if n in labcat) or None]
+                + [None] * 10 for code, (name, instr, lab) in USP_CATALOG.items()]
+    table(ws, 4, CAT_H, cat_rows, set(range(6, 16)), [9, 44, 13, 8, 18, 10, 10, 10, 10, 10, 10, 10, 10, 10, 30])
+    cat_row = {code: 5 + i for i, code in enumerate(USP_CATALOG)}
+
+    # ---- Test times
     ws = wb.create_sheet("Test times")
     title(ws, "Test times per material (hours)")
-    r0 = help_rows(ws, 2, TIMES_HELP) + 1
-    rows = []
-    for r in tt_rows([r for r in s["tt"] if r[1] == "RM"]):
-        k, names = m[r[0]]
-        test = r[3]
-        if test.startswith("Assay"):
-            hint, src = agg(names, lead, "s"), "specific tests"
-        elif test.startswith("Other compendial"):
-            hint, src = agg(names, lead, "g"), "general tests"
-        else:
-            hint, src = agg(names, lead, "t"), "all tests"
-        tests = "; ".join(sorted({lead[n]["st" if src == "specific tests" else "gt"] for n in names} - {"", "-"}))[:250] if src != "all tests" \
-            else "; ".join(sorted({lead[n]["gt"] + " | " + lead[n]["st"] for n in names}))[:250]
-        rows.append(r + [hint, src if hint is not None else None, tests or None, k])
-    table(ws, r0, s["tt_h"] + ["Recorded h/sample", "Covers", "Recorded test list", "Match"],
-          rows, TT_INPUT, TT_WIDTHS + [11, 12, 50, 14], TT_DV)
+    r0 = help_rows(ws, 2, RM_TIMES_HELP) + 1
+    table(ws, r0, s["tt_h"] + ["Catalog code", "USP-NF source", "Recorded h (lab records)", "Recorded test list"],
+          [row + ref for row, _, ref in tt], TT_INPUT, TT_WIDTHS + [9, 40, 11, 50], TT_DV)
+    for i, (row, code, _) in enumerate(tt, r0 + 1):
+        if code:
+            for col, ccol in CAT_LINK.items():
+                c = ws.cell(i, col, f"=IF('Test catalog'!{ccol}{cat_row[code]}=\"\",\"\",'Test catalog'!{ccol}{cat_row[code]})")
+                c.fill = AUTO
+    for col in ("E", "P", "R", "W"):   # unused for RM; kept (hidden) so columns paste back by position
+        ws.column_dimensions[col].hidden = True
 
-    extra_tests_sheet(wb, s, "RM", "Examples: residual solvents by GC, KF water as a separate test, microbial limits if done in this lab, heavy metals by ICP.")
-
-    ws = wb.create_sheet("Other materials")
-    title(ws, "Materials with recorded lab times that are not on the master list",
-          "Is it still purchased and tested? If Y, give lots/yr - it will be added to the master list.")
-    rows = [[n, lead[n]["sheet"], round(lead[n]["t"] / 60, 2) if lead[n]["t"] else None, None, None, None, None]
-            for n in sorted(unlisted, key=str.lower)]
-    table(ws, 4, ["Material (as in lab time records)", "Record group", "Recorded total h/lot", "Still tested? (Y/N)",
-                  "Lots / yr", "Same material as (master-list name, if a duplicate)", "Notes"],
-          rows, {4, 5, 6, 7}, [50, 10, 12, 12, 10, 36, 30], {"D": '"Y,N"'})
-    ws = wb.create_sheet("Purchase list")
-    title(ws, "Raw-material names from the purchasing list",
-          "Grey = matched automatically. Confirm 'Suggested' rows; for 'Not on master list' rows say if QC still tests it and give lots/yr.")
-    order = {"Suggested - confirm": 0, "Not on master list": 1, "In time records only": 2}
-    rows = [[n, c, st, sm, None, None, None, None]
-            for n, c, st, sm in sorted(rm_raw, key=lambda x: (order.get(x[2], 3), x[0].lower()))]
-    table(ws, 4, ["Name (as purchased)", "Times listed", "Match to master list", "Master-list material",
-                  "Correct master-list name (if wrong / missing)", "Still tested by QC? (Y/N)", "Lots / yr", "Notes"],
-          rows, {5, 6, 7, 8}, [44, 8, 24, 40, 36, 12, 10, 30], {"F": '"Y,N"'})
-    return wb, dict(mats=len(mats), exact=n_exact, alias=n_alias, timed=n_timed, unlisted=len(unlisted),
-                    raw=len(raw), raw_st=raw_st,
-                    rows=sum(1 for r in s["tt"] if r[1] == "RM"), m=m,
+    extra_tests_sheet(wb, s, "RM", "Examples: in-house or supplier-specific tests, residual solvents by GC, heavy metals by ICP.")
+    no_mono = [r[0] for r in s["rm"] if not usp.get(r[0], (0, 0, []))[2]]
+    return wb, dict(mats=len(mats), mapped=n_mapped, rows=len(tt), cat=len(USP_CATALOG), no_mono=no_mono,
+                    sugg=len(sugg), other=len(rest), raw=len(raw), unlisted=len(unlisted), m=m,
                     cats=collections.Counter(r[1] for r in s["rm"]))
+
+
+RM_SHEETS = [("Questions", "Answer sections A–E."),
+             ("Materials", "Lots/yr now and future, suppliers, reduced testing - and whether unlisted names are still tested."),
+             ("Test catalog", "Time each general test once (LOD, KF, pH, IR, titration ...)."),
+             ("Test times", "One row per material x compendial test: confirm Applicable; time the HPLC/GC tests."),
+             ("Extra tests", "Tests you run that are missing from Test times.")]
 
 
 # ---------------------------------------------------------------- FP
@@ -592,28 +739,26 @@ def main():
     rm_wb.save(os.path.join(OUT, "RM_Analyst_Questionnaire.xlsx"))
     fp_wb.save(os.path.join(OUT, "FP_Analyst_Questionnaire.xlsx"))
 
-    no_match = sorted(k for k, (st, _) in rm["m"].items() if st == "No recorded time")
     write_md(os.path.join(OUT, "RM_Analyst_Questionnaire.md"), "Raw Material Analyst Questionnaire",
              "QC Chemical Laboratory — raw materials", "each analyst testing incoming materials (2–3 people, one copy each)",
-             [("Questions", "Answer sections A–E below."),
-              ("Volumes", "Lots/yr now and future, supplier/pharmacopoeia, number of suppliers, reduced-testing status per material."),
-              ("Test times", f"{rm['rows']} material × test rows. Confirm or correct the recorded lab time shown on the right."),
-              ("Extra tests", "Add tests that are missing (GC residual solvents, KF as a separate test, ICP)."),
-              ("Other materials", f"{rm['unlisted']} materials with recorded lab times but not on the master list: still tested? lots/yr?"),
-              ("Purchase list", f"{rm['raw']} distinct names from the purchasing list: confirm suggested master-list names; for unlisted ones, still tested? lots/yr?")],
-             [f"{rm['mats']} materials: " + ", ".join(f"{c} {n}" for n, c in rm["cats"].most_common()) + ".",
-              f"Names matched to the lab time records: {rm['exact']} exact, {rm['alias']} via a curated alias list (marked *Alias – confirm*), "
-              f"{len(no_match)} not found. {rm['timed']} materials carry a recorded time.",
-              "Recorded times are per test set in minutes and include unattended oven/instrument time; they are shown in hours as a "
-              "starting point only. Where a material has several supplier variants, the longest time is shown.",
-              "Recorded specific-test time is shown on the *Assay + related substances* row; general-test time on the "
-              "*Other compendial tests* row; excipients show the total on their single *Compendial tests* row.",
-              f"Purchasing list ({rm['raw']} distinct names): " + ", ".join(f"{c} {k.lower()}" for k, c in rm["raw_st"].most_common())
-              + ". Matches use exact spelling, known aliases and name mappings, then a close-spelling suggestion that must be confirmed."],
+             RM_SHEETS,
+             [f"{rm['mats']} materials on the master list ("
+              + ", ".join(f"{c} {n}" for n, c in rm["cats"].most_common(4)) + ", others); "
+              f"{rm['mapped']} have a USP–NF monograph.",
+              f"*Test times* lists each monograph test as its own row ({rm['rows']} rows). General tests link to the "
+              f"*Test catalog* ({rm['cat']} tests), so they are timed once; HPLC/GC tests are timed per material.",
+              "Left out: microbial, sterility and endotoxin tests (Micro lab). Pre-set to N: tests that apply only to some grades "
+              "(e.g. *where labelled for injectables*). Where a monograph gives alternative assays, keep only the one you run.",
+              f"*Materials*: the master list, then {rm['sugg']} purchase-list names with a suggested match to confirm, then "
+              f"{rm['other']} names found only in the purchase list or the lab time records.",
+              "Recorded lab times are per test set and include unattended time; they are shown in hours as a starting point. "
+              "Two columns on *Materials* flag tests in the monograph but not in the lab record, and the reverse; "
+              "differences are expected where a material is tested to BP/EP or a supplier spec - then fix *Test times* to what you run."],
              RM_QUESTIONS,
-             ["### Materials with no recorded time", "",
-              "These need a fresh time estimate (or the name it was recorded under, if it was tested under another name):", "",
-              ", ".join(no_match) + ".", ""])
+             ["### Materials without a USP–NF monograph", "",
+              "Tested to an in-house or supplier specification; they keep the lab's recorded test set. "
+              "\\* = no recorded time either, so a fresh estimate is needed.", "",
+              ", ".join(n + ("\\*" if rm["m"][n][0] == "No recorded time" else "") for n in rm["no_mono"]) + ".", ""])
 
     write_md(os.path.join(OUT, "FP_Analyst_Questionnaire.md"), "Finished Product Analyst Questionnaire",
              "QC Chemical Laboratory — finished products", "each analyst testing release and stability samples (2–3 people, one copy each)",
@@ -630,8 +775,8 @@ def main():
              FP_QUESTIONS,
              ["### Most-shared actives (campaign candidates)", "", "| Active | Families |", "|---|---|"]
              + [f"| {a} | {f} |" for a, _, f, *_ in fp["camp"][:12]] + [""])
-    print(f"RM: {rm['mats']} materials, {rm['rows']} test rows, exact {rm['exact']}, alias {rm['alias']}, "
-          f"none {len(no_match)}, timed {rm['timed']}, other {rm['unlisted']}; purchase list {rm['raw']}: {dict(rm['raw_st'])}")
+    print(f"RM: {rm['mats']} materials, {rm['mapped']} with monograph, {rm['rows']} test rows, catalog {rm['cat']}, "
+          f"suggested {rm['sugg']}, other names {rm['other']}")
     print(f"FP: {fp['products']} products, {fp['fams']} families, {fp['rows']} test rows, {len(fp['camp'])} shared actives")
     missing = [(k, n) for k, ns in ALIASES.items() for n in ns if n not in lead]
     if missing:

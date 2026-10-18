@@ -13,5 +13,6 @@
 ```bash
 python3 tools/leadtime_to_md.py data/Leadtime.xlsx data/Leadtime.md
 python3 tools/questionnaire_to_xlsx.py questionnaires/Chemical_Lab_Questionnaire.md questionnaires/Chemical_Lab_Questionnaire.xlsx
+PYTHONPATH=tools python3 tools/usp_tests.py     # data/usp_tests.csv: RM tests per material from ~/usp48 (USP-NF index)
 python3 tools/build_analyst_questionnaires.py   # RM + FP analyst questionnaires (.xlsx + .md)
 ```
