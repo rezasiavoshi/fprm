@@ -5,6 +5,8 @@ Pre-fills each questionnaire from:
   data/Leadtime.xlsx           - recorded RM test times (minutes), used as hints to confirm
   data/rawmaterials.md         - raw-material names as purchased (usp48 export), checked against the study list
   data/Product-Material-Database.xlsx - 'Name Mapping' sheet, source spelling -> study material name
+The questionnaires are self-contained: respondent-facing text never names these files or their sheets,
+so a respondent needs only the questionnaire. Column order still matches the study for paste-back.
 Usage: python3 tools/build_analyst_questionnaires.py [repo_root]
 """
 import re, sys, os, collections, difflib, openpyxl
@@ -132,10 +134,22 @@ def cell(v):
     return "" if v is None else str(v).replace("\n", " ").strip()
 
 
+# Study wording that points at source files -> neutral wording for respondents.
+NEUTRAL = [("(from database)", "(from product formulas)"), ("not in source file", "not on record"),
+           ("Not in source file", "Not on record")]
+
+
+def neutral(v):
+    if isinstance(v, str):
+        for a, b in NEUTRAL:
+            v = v.replace(a, b)
+    return v
+
+
 def load_study():
     wb = openpyxl.load_workbook(STUDY, data_only=True)
-    rows = lambda name: [r for r in wb[name].iter_rows(min_row=5, values_only=True) if r[0]]
-    hdr = lambda name: [c.value for c in wb[name][4]]
+    rows = lambda name: [tuple(neutral(v) for v in r) for r in wb[name].iter_rows(min_row=5, values_only=True) if r[0]]
+    hdr = lambda name: [neutral(c.value) for c in wb[name][4]]
     return dict(tt=rows("Test_Times"), tt_h=hdr("Test_Times")[:26],
                 rm=rows("RM_Lots"), rm_h=hdr("RM_Lots")[:8],
                 fp=rows("Products"), fp_h=hdr("Products")[:13],
@@ -168,7 +182,7 @@ def match(study_names, lead):
         elif by_norm.get(norm(m)):
             res[m] = ("Exact", by_norm[norm(m)])
         else:
-            res[m] = ("Not in Leadtime.xlsx", [])
+            res[m] = ("No recorded time", [])
     return res
 
 
@@ -200,17 +214,17 @@ def match_raw(raw, study_names, lead, dbmap):
     for name, count in raw:
         n = norm(name)
         if n in by_norm:
-            st, m = "In study", by_norm[n]
+            st, m = "On master list", by_norm[n]
         elif n in via_alias:
-            st, m = "In study (Leadtime alias)", via_alias[n]
+            st, m = "On master list (alias)", via_alias[n]
         elif dbmap.get(n) in study_names:
-            st, m = "In study (DB name mapping)", dbmap[n]
+            st, m = "On master list (name mapping)", dbmap[n]
         elif name not in NOT_SAME and (close := difflib.get_close_matches(n, by_norm, 1, 0.85)):
             st, m = "Suggested - confirm", by_norm[close[0]]
         elif n in lead_norm:
-            st, m = "In Leadtime.xlsx only", None
+            st, m = "In time records only", None
         else:
-            st, m = "Not in study", None
+            st, m = "Not on master list", None
         res.append((name, count, st, m))
     return res
 
@@ -255,21 +269,21 @@ def table(ws, r0, headers, rows, input_cols, widths=None, dv=None):
 
 
 def qsheet(ws, sections, sub):
-    """Question sheet: sections = [(section title, [(id, question, maps-to)])]."""
+    """Question sheet: sections = [(section title, [(id, question, maps-to)])]. maps-to stays internal."""
     title(ws, ws.title, sub)
     r = 4
-    for j, (h, w) in enumerate([("#", 7), ("Question", 70), ("Answer", 60), ("Feeds study sheet / column", 26)], 1):
+    for j, (h, w) in enumerate([("#", 7), ("Question", 70), ("Answer", 60)], 1):
         c = ws.cell(r, j, h)
         c.fill, c.font, c.border = HEAD, Font(bold=True, color="FFFFFF"), BOX
         ws.column_dimensions[get_column_letter(j)].width = w
     for sec, qs in sections:
         r += 1
         ws.cell(r, 1, sec).font = Font(bold=True)
-        for j in range(1, 5):
+        for j in range(1, 4):
             ws.cell(r, j).fill = SEC
         for qid, q, maps in qs:
             r += 1
-            for j, v in enumerate([qid, q, None, maps], 1):
+            for j, v in enumerate([qid, q, None], 1):
                 c = ws.cell(r, j, v)
                 c.alignment, c.border = WRAP, BOX
                 c.fill = INPUT if j == 3 else AUTO
@@ -293,9 +307,9 @@ TIMES_HELP = [
     "Analyst time = hands-on time only. Instrument run time, oven/LOD time and dissolution bath time are recorded "
     "separately because the instrument works unattended.",
     "Set 'Applicable' = N for tests you never do on that item. Add tests that are missing on the 'Extra tests' sheet.",
-    "Grey columns are pre-filled. Columns AA onward are reference only (e.g. times recorded in Leadtime.xlsx) - "
+    "Grey columns are pre-filled. Columns AA onward are reference only (times recorded by the lab in the past) - "
     "confirm or correct them in the yellow columns.",
-    "Columns A-Z are in the same order as the Test_Times sheet of QC_Capacity_Study.xlsx: answers are pasted back 1:1.",
+    "Do not insert, delete or reorder columns - the answers are collected by column position.",
 ]
 
 TT_WIDTHS = [26, 6, 34, 26, 1, 9, 13, 10, 9, 10, 10, 10, 10, 10, 10, 1, 10, 10, 10, 10, 10, 9, 10, 16, 11, 30]
@@ -410,10 +424,10 @@ def build_rm(s, lead, raw, dbmap):
     n_alias = sum(1 for k, _ in m.values() if k.startswith("Alias"))
     n_timed = sum(1 for _, names in m.values() if agg(names, lead, "t"))
     unlisted = [n for n in lead if n not in used]
-    stats = [f"{len(mats)} materials and {sum(1 for r in s['tt'] if r[1] == 'RM')} material x test rows from QC_Capacity_Study.xlsx (RM_Lots, Test_Times).",
-             f"Leadtime.xlsx: {n_exact} exact + {n_alias} alias name matches; {n_timed} materials have a recorded time to confirm.",
-             f"{len(unlisted)} materials appear in Leadtime.xlsx but not in the study list - see 'Other materials'.",
-             f"rawmaterials.md: {len(raw)} distinct names; " + ", ".join(f"{c} {k}" for k, c in raw_st.most_common()) + " - see 'Purchase list'."]
+    stats = [f"{len(mats)} materials on the master list and {sum(1 for r in s['tt'] if r[1] == 'RM')} material x test rows.",
+             f"Lab time records: {n_exact} exact + {n_alias} alias name matches; {n_timed} materials have a recorded time to confirm.",
+             f"{len(unlisted)} materials have recorded times but are not on the master list - see 'Other materials'.",
+             f"Purchasing list: {len(raw)} distinct names; " + ", ".join(f"{c} {k.lower()}" for k, c in raw_st.most_common()) + " - see 'Purchase list'."]
     overview(wb, "Raw Material Analyst Questionnaire", "QC Chemical Laboratory - raw materials (APIs, excipients, colorants, flavours, solvents)",
              [("Who fills it", "Each analyst who tests incoming raw materials (2-3 people). Each person fills a separate copy."),
               ("Time needed", "About 2 hours, plus reviewing the pre-filled tables.")],
@@ -421,19 +435,19 @@ def build_rm(s, lead, raw, dbmap):
               ("Volumes", "Lots received per year for each material."),
               ("Test times", "Time per test for each material - the core input."),
               ("Extra tests", "Tests missing from the list (GC residual solvents, KF as separate test, etc.)."),
-              ("Other materials", "Materials in Leadtime.xlsx that are not in the study list - still tested?"),
-              ("Purchase list", "Names from the purchasing list (rawmaterials.md) - confirm the study name, or say if still tested.")], stats)
+              ("Other materials", "Materials with recorded lab times that are not on the master list - still tested?"),
+              ("Purchase list", "Names from the purchasing list - confirm the master-list name, or say if still tested.")], stats)
 
     qsheet(wb.create_sheet("Questions"), RM_QUESTIONS, "Answer in the yellow column. Short answers are fine.")
 
     ws = wb.create_sheet("Volumes")
-    title(ws, "Lots received and tested per year", "Columns A-H = RM_Lots sheet of the study. Sorted as in the study; use the filter.")
+    title(ws, "Lots received and tested per year", "One row per material on the master list; use the filter.")
     rows = []
     for r in s["rm"]:
         k, names = m[r[0]]
         rows.append(list(r[:5]) + [None] + list(r[6:8]) + [None, None, k, "; ".join(names), agg(names, lead, "t")])
     hdr = s["rm_h"] + ["Suppliers (number)", "Reduced testing? (none / ID+CoA / skip-lot)",
-                       "Match to Leadtime.xlsx", "Leadtime.xlsx name(s)", "Recorded total h/lot (Leadtime, worst variant)"]
+                       "Match to lab time records", "Name(s) in lab time records", "Recorded total h/lot (worst supplier variant)"]
     table(ws, 4, hdr, rows, {4, 5, 7, 8, 9, 10}, [34, 18, 10, 10, 12, 1, 22, 30, 10, 18, 16, 40, 12],
           {"J": '"None,ID + CoA,Skip-lot"'})
 
@@ -453,27 +467,27 @@ def build_rm(s, lead, raw, dbmap):
         tests = "; ".join(sorted({lead[n]["st" if src == "specific tests" else "gt"] for n in names} - {"", "-"}))[:250] if src != "all tests" \
             else "; ".join(sorted({lead[n]["gt"] + " | " + lead[n]["st"] for n in names}))[:250]
         rows.append(r + [hint, src if hint is not None else None, tests or None, k])
-    table(ws, r0, s["tt_h"] + ["Recorded h/sample (Leadtime)", "Covers", "Recorded test list", "Match"],
+    table(ws, r0, s["tt_h"] + ["Recorded h/sample", "Covers", "Recorded test list", "Match"],
           rows, TT_INPUT, TT_WIDTHS + [11, 12, 50, 14], TT_DV)
 
     extra_tests_sheet(wb, s, "RM", "Examples: residual solvents by GC, KF water as a separate test, microbial limits if done in this lab, heavy metals by ICP.")
 
     ws = wb.create_sheet("Other materials")
-    title(ws, "Materials in Leadtime.xlsx that are not in the study list",
-          "Is it still purchased and tested? If Y, give lots/yr - it will be added to the study.")
+    title(ws, "Materials with recorded lab times that are not on the master list",
+          "Is it still purchased and tested? If Y, give lots/yr - it will be added to the master list.")
     rows = [[n, lead[n]["sheet"], round(lead[n]["t"] / 60, 2) if lead[n]["t"] else None, None, None, None, None]
             for n in sorted(unlisted, key=str.lower)]
-    table(ws, 4, ["Material (as in Leadtime.xlsx)", "Leadtime sheet", "Recorded total h/lot", "Still tested? (Y/N)",
-                  "Lots / yr", "Same material as (study name, if a duplicate)", "Notes"],
+    table(ws, 4, ["Material (as in lab time records)", "Record group", "Recorded total h/lot", "Still tested? (Y/N)",
+                  "Lots / yr", "Same material as (master-list name, if a duplicate)", "Notes"],
           rows, {4, 5, 6, 7}, [50, 10, 12, 12, 10, 36, 30], {"D": '"Y,N"'})
     ws = wb.create_sheet("Purchase list")
-    title(ws, "Raw-material names from the purchasing list (rawmaterials.md)",
-          "Grey = matched automatically. Confirm 'Suggested' rows; for 'Not in study' rows say if QC still tests it and give lots/yr.")
-    order = {"Suggested - confirm": 0, "Not in study": 1, "In Leadtime.xlsx only": 2}
+    title(ws, "Raw-material names from the purchasing list",
+          "Grey = matched automatically. Confirm 'Suggested' rows; for 'Not on master list' rows say if QC still tests it and give lots/yr.")
+    order = {"Suggested - confirm": 0, "Not on master list": 1, "In time records only": 2}
     rows = [[n, c, st, sm, None, None, None, None]
             for n, c, st, sm in sorted(rm_raw, key=lambda x: (order.get(x[2], 3), x[0].lower()))]
-    table(ws, 4, ["Name (as in rawmaterials.md)", "Times listed", "Match to study", "Study material",
-                  "Correct study name (if wrong / missing)", "Still tested by QC? (Y/N)", "Lots / yr", "Notes"],
+    table(ws, 4, ["Name (as purchased)", "Times listed", "Match to master list", "Master-list material",
+                  "Correct master-list name (if wrong / missing)", "Still tested by QC? (Y/N)", "Lots / yr", "Notes"],
           rows, {5, 6, 7, 8}, [44, 8, 24, 40, 36, 12, 10, 30], {"F": '"Y,N"'})
     return wb, dict(mats=len(mats), exact=n_exact, alias=n_alias, timed=n_timed, unlisted=len(unlisted),
                     raw=len(raw), raw_st=raw_st,
@@ -488,7 +502,7 @@ def campaign_candidates(fp):
         if r[4]:
             f = fams.setdefault(r[4], dict(products=[], actives=set(), form=set()))
             f["products"].append(r[0])
-            f["actives"].update(a.strip() for a in str(r[1] or "").split(",") if a.strip() and not a.startswith("Not in source"))
+            f["actives"].update(a.strip() for a in str(r[1] or "").split(",") if a.strip() and not a.startswith("Not on record"))
             f["form"].add(r[3] or "?")
     by_active = collections.defaultdict(list)
     for fid, f in fams.items():
@@ -504,10 +518,10 @@ def build_fp(s):
     wb = Workbook()
     fams, camp, no_active = campaign_candidates(s["fp"])
     fp_rows = [r for r in s["tt"] if r[1] == "FP"]
-    stats = [f"{len(s['fp'])} products in {len(fams)} method families and {len(fp_rows)} family x test rows from QC_Capacity_Study.xlsx (Products, Test_Times).",
+    stats = [f"{len(s['fp'])} products in {len(fams)} method families and {len(fp_rows)} family x test rows.",
              f"{len(camp)} active ingredients appear in more than one family - candidates for shared HPLC sequences ('Campaign groups').",
-             f"{len(no_active)} families have no active ingredient in the formula database ({', '.join(no_active)}) - name the actives in Test times Notes.",
-             "No recorded finished-product test times exist yet (Leadtime.xlsx covers raw materials only), so all times are new estimates."]
+             f"{len(no_active)} families have no active ingredient in the product formulas ({', '.join(no_active)}) - name the actives in Test times Notes.",
+             "No recorded finished-product test times exist yet (lab records cover raw materials only), so all times are new estimates."]
     overview(wb, "Finished Product Analyst Questionnaire", "QC Chemical Laboratory - finished products (release, stability, in-process)",
              [("Who fills it", "Each analyst who tests finished products (2-3 people). Each person fills a separate copy."),
               ("Time needed", "About 3 hours. Start with the families you test most often.")],
@@ -520,9 +534,9 @@ def build_fp(s):
     qsheet(wb.create_sheet("Questions"), FP_QUESTIONS, "Answer in the yellow column. Short answers are fine.")
 
     ws = wb.create_sheet("Volumes")
-    title(ws, "Release batches and stability samples per year", "Columns A-M = Products sheet of the study. Grey columns K-L are calculated in the study.")
+    title(ws, "Release batches and stability samples per year", "One row per product. Leave the narrow grey columns K-L empty.")
     rows = [list(r[:10]) + [None, None, r[12], None, None] for r in s["fp"]]
-    table(ws, 4, s["fp_h"] + ["Stability time points / yr per batch on study", "IPC samples tested by QC per batch"],
+    table(ws, 4, s["fp_h"] + ["Stability time points / yr per batch on stability", "IPC samples tested by QC per batch"],
           rows, {4, 5, 6, 7, 8, 9, 10, 13, 14, 15}, [30, 30, 8, 12, 8, 10, 10, 12, 12, 12, 1, 1, 30, 14, 14],
           {"H": '"Marketed,Pipeline / no formula,Discontinued"'})
 
@@ -555,17 +569,14 @@ def md_questions(sections):
 
 def write_md(path, title_, area, who, sheets, facts, sections, extra):
     o = [f"# {title_}", "",
-         "**Deliverable 2 — analyst edition** of the *QC Laboratory Capacity, Staffing Gap and CAPEX Assessment* "
-         "(see `reports/QC_Lab_Capacity_Staffing_CAPEX_Report.md`). The unit-head edition is "
-         "`questionnaires/Chemical_Lab_Questionnaire.md`.", "",
+         "**Analyst edition** of the *QC Laboratory Capacity, Staffing Gap and CAPEX Assessment*.", "",
          f"- **Area:** {area}", f"- **Who fills it:** {who}",
-         f"- **Working file:** `{os.path.basename(path)[:-3]}.xlsx` — the tables are only in the workbook; this page lists the questions and explains the sheets.",
-         "- **Generated by:** `tools/build_analyst_questionnaires.py` from `data/QC_Capacity_Study.xlsx`, `data/Leadtime.xlsx`, "
-         "`data/rawmaterials.md` and `data/Product-Material-Database.xlsx`. Re-run it after the source files change.", "",
+         f"- **Working file:** `{os.path.basename(path)[:-3]}.xlsx` — the tables are only in the workbook; this page lists the questions and explains the sheets.", "",
          "## How the answers are used", "",
-         "Every table keeps the column order of the matching sheet in `QC_Capacity_Study.xlsx`, so answers are pasted back "
-         "without re-typing, and the study's `Capacity` sheet then shows utilisation and the staffing/instrument gap. "
-         "Times are asked as minimum / most likely / maximum, and hands-on analyst time is kept apart from unattended instrument time.", "",
+         "Your answers give the time each test takes and how many samples arrive, which shows how busy the lab and its "
+         "instruments are and whether more staff or instruments are needed. "
+         "Times are asked as minimum / most likely / maximum, and hands-on analyst time is kept apart from unattended instrument time. "
+         "Do not insert, delete or reorder columns in the workbook.", "",
          "## Workbook sheets", "", "| Sheet | What to do |", "|---|---|"]
     o += [f"| {a} | {b} |" for a, b in sheets]
     o += ["", "## Pre-filled data", ""] + [f"- {f}" for f in facts] + [""] + extra
@@ -581,27 +592,27 @@ def main():
     rm_wb.save(os.path.join(OUT, "RM_Analyst_Questionnaire.xlsx"))
     fp_wb.save(os.path.join(OUT, "FP_Analyst_Questionnaire.xlsx"))
 
-    no_match = sorted(k for k, (st, _) in rm["m"].items() if st.startswith("Not"))
+    no_match = sorted(k for k, (st, _) in rm["m"].items() if st == "No recorded time")
     write_md(os.path.join(OUT, "RM_Analyst_Questionnaire.md"), "Raw Material Analyst Questionnaire",
              "QC Chemical Laboratory — raw materials", "each analyst testing incoming materials (2–3 people, one copy each)",
              [("Questions", "Answer sections A–E below."),
               ("Volumes", "Lots/yr now and future, supplier/pharmacopoeia, number of suppliers, reduced-testing status per material."),
-              ("Test times", f"{rm['rows']} material × test rows. Confirm or correct the recorded Leadtime.xlsx time shown on the right."),
+              ("Test times", f"{rm['rows']} material × test rows. Confirm or correct the recorded lab time shown on the right."),
               ("Extra tests", "Add tests that are missing (GC residual solvents, KF as a separate test, ICP)."),
-              ("Other materials", f"{rm['unlisted']} materials in Leadtime.xlsx not in the study list: still tested? lots/yr?"),
-              ("Purchase list", f"{rm['raw']} distinct names from `rawmaterials.md`: confirm suggested study names; for unlisted ones, still tested? lots/yr?")],
+              ("Other materials", f"{rm['unlisted']} materials with recorded lab times but not on the master list: still tested? lots/yr?"),
+              ("Purchase list", f"{rm['raw']} distinct names from the purchasing list: confirm suggested master-list names; for unlisted ones, still tested? lots/yr?")],
              [f"{rm['mats']} materials: " + ", ".join(f"{c} {n}" for n, c in rm["cats"].most_common()) + ".",
-              f"Names matched to `Leadtime.xlsx`: {rm['exact']} exact, {rm['alias']} via a curated alias list (marked *Alias – confirm*), "
+              f"Names matched to the lab time records: {rm['exact']} exact, {rm['alias']} via a curated alias list (marked *Alias – confirm*), "
               f"{len(no_match)} not found. {rm['timed']} materials carry a recorded time.",
               "Recorded times are per test set in minutes and include unattended oven/instrument time; they are shown in hours as a "
               "starting point only. Where a material has several supplier variants, the longest time is shown.",
-              "Leadtime.xlsx specific-test time is shown on the *Assay + related substances* row; general-test time on the "
+              "Recorded specific-test time is shown on the *Assay + related substances* row; general-test time on the "
               "*Other compendial tests* row; excipients show the total on their single *Compendial tests* row.",
-              f"`rawmaterials.md` (purchasing list, {rm['raw']} distinct names): " + ", ".join(f"{c} {k.lower()}" for k, c in rm["raw_st"].most_common())
-              + ". Matches use exact spelling, the Leadtime alias list, the database's *Name Mapping* sheet, then a fuzzy suggestion that must be confirmed."],
+              f"Purchasing list ({rm['raw']} distinct names): " + ", ".join(f"{c} {k.lower()}" for k, c in rm["raw_st"].most_common())
+              + ". Matches use exact spelling, known aliases and name mappings, then a close-spelling suggestion that must be confirmed."],
              RM_QUESTIONS,
-             ["### Materials with no match in Leadtime.xlsx", "",
-              "These need a fresh time estimate (or the Leadtime.xlsx name, if it exists under another name):", "",
+             ["### Materials with no recorded time", "",
+              "These need a fresh time estimate (or the name it was recorded under, if it was tested under another name):", "",
               ", ".join(no_match) + ".", ""])
 
     write_md(os.path.join(OUT, "FP_Analyst_Questionnaire.md"), "Finished Product Analyst Questionnaire",
@@ -613,7 +624,7 @@ def main():
               ("Extra tests", "Add tests that are missing (blend uniformity, KF, preservative assay, delivered dose).")],
              [f"{fp['products']} products in {fp['fams']} method families; dosage forms: "
               + ", ".join(f"{c} {n}" for n, c in fp["forms"].most_common()) + ".",
-              f"{len(fp['no_active'])} families have no active ingredient in the formula database ({', '.join(fp['no_active'])}); the analyst is asked to name them.",
+              f"{len(fp['no_active'])} families have no active ingredient in the product formulas ({', '.join(fp['no_active'])}); the analyst is asked to name them.",
               "Families group strengths that share methods, so times are asked once per family, not per product.",
               "There is no recorded time catalogue for finished products; every time on this questionnaire is a new estimate."],
              FP_QUESTIONS,
