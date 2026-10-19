@@ -14,6 +14,7 @@ Your answers give the time each test takes and how many samples arrive, which sh
 
 | Sheet | What to do |
 |---|---|
+| Guide | Rules, which sheets take new rows, and what every column means. |
 | Questions | Answer sections A–E below. |
 | Volumes | Release batches/yr and stability samples/yr per product, now and future; stability time points; IPC samples. |
 | Test times | 385 family × test rows (assay, related substances, dissolution, CU, ID, other). |

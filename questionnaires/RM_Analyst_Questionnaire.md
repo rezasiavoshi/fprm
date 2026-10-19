@@ -14,11 +14,12 @@ Your answers give the time each test takes and how many samples arrive, which sh
 
 | Sheet | What to do |
 |---|---|
+| Guide | Rules, and what each column means. |
 | Questions | Answer sections A–E. |
 | Materials | Lots/yr now and future, suppliers, reduced testing - and whether unlisted names are still tested. |
 | Test catalog | Time each general test once (LOD, KF, pH, IR, titration ...). |
 | Test times | One row per material x compendial test: confirm Applicable; time the HPLC/GC tests. |
-| Extra tests | Tests you run that are missing from Test times. |
+| Extra tests | Tests you run that are missing from Test times (in-house tests, residual solvents, ICP ...). |
 
 ## Pre-filled data
 

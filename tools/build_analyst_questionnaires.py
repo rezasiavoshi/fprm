@@ -290,13 +290,13 @@ def table(ws, r0, headers, rows, input_cols, widths=None, dv=None):
             c = ws.cell(i, j, v)
             c.border, c.alignment = BOX, WRAP
             c.fill = INPUT if j in input_cols else AUTO
-    ws.row_dimensions[r0].height = 60
+    ws.row_dimensions[r0].height = 45
     ws.freeze_panes = ws.cell(r0 + 1, 3)
     if rows:
         ws.auto_filter.ref = f"A{r0}:{get_column_letter(len(headers))}{r0 + len(rows)}"
     for j, w in enumerate(widths or [], 1):
         ws.column_dimensions[get_column_letter(j)].width = w
-    last = r0 + max(len(rows), 1)
+    last = r0 + max(len(rows), 1) + 200   # dropdowns also cover rows added below the table
     for col, formula in (dv or {}).items():
         v = DataValidation(type="list", formula1=formula, allow_blank=True)
         ws.add_data_validation(v)
@@ -305,8 +305,7 @@ def table(ws, r0, headers, rows, input_cols, widths=None, dv=None):
 
 def qsheet(ws, sections, sub):
     """Question sheet: sections = [(section title, [(id, question, maps-to)])]. maps-to stays internal."""
-    title(ws, ws.title, sub)
-    r = 4
+    r = 1
     for j, (h, w) in enumerate([("#", 7), ("Question", 70), ("Answer", 60)], 1):
         c = ws.cell(r, j, h)
         c.fill, c.font, c.border = HEAD, Font(bold=True, color="FFFFFF"), BOX
@@ -323,7 +322,7 @@ def qsheet(ws, sections, sub):
                 c.alignment, c.border = WRAP, BOX
                 c.fill = INPUT if j == 3 else AUTO
             ws.row_dimensions[r].height = max(30, 15 * (len(q) // 80 + 1))
-    ws.freeze_panes = "A5"
+    ws.freeze_panes = "A2"
 
 
 RESPONDENT = ("A. Respondent", [
@@ -336,42 +335,41 @@ RESPONDENT = ("A. Respondent", [
     ("A6", "Is any method or instrument in your area done by only one qualified person? Which?", "Report: key-person risk"),
 ])
 
-TIMES_HELP = [
-    "Times are in HOURS per sample unless the header says per sequence. Give MIN / MOST LIKELY / MAX for preparation - "
-    "a realistic range is more useful than one exact number.",
-    "Analyst time = hands-on time only. Instrument run time, oven/LOD time and dissolution bath time are recorded "
-    "separately because the instrument works unattended.",
-    "Set 'Applicable' = N for tests you never do on that item. Add tests that are missing on the 'Extra tests' sheet.",
-    "Grey columns are pre-filled. Columns AA onward are reference only (times recorded by the lab in the past) - "
-    "confirm or correct them in the yellow columns.",
-    "Do not insert, delete or reorder columns - the answers are collected by column position.",
-]
-
-TT_WIDTHS = [26, 6, 34, 26, 1, 9, 13, 10, 9, 10, 10, 10, 10, 10, 10, 1, 10, 10, 10, 10, 10, 9, 10, 16, 11, 30]
-TT_INPUT = set(range(6, 27)) - {16}   # F..Z editable, P (PERT) is computed in the study
+TT_WIDTHS = [26, 6, 34, 26, 1, 9, 13, 10, 9, 10, 10, 10, 10, 10, 10, 9, 10, 10, 10, 10, 10, 9, 10, 16, 11, 30, 10]
+TT_INPUT = set(range(6, 28)) - {16}   # F..AA editable, P (PERT) is computed
 TT_DV = {"F": '"Y,N"', "G": '"HPLC,GC,UV-Vis,AAS / ICP,KF titrator,Other / bench,None"',
-         "H": '"Low,Medium,High"', "W": '"Y,N"', "Y": '"High,Medium,Low"'}
+         "H": '"Low,Medium,High"', "W": '"Y,N"', "Y": '"High,Medium,Low"', "AA": '"Y,N"'}
+OUTSOURCED = "Outsourced (Y/N)"   # after the study's A..Z, so paste-back by position is unchanged
 
 
 def tt_rows(rows):
-    # Keep study columns A..Z; blank the computed lookup (E) and PERT (P) columns.
-    return [[v if j not in (4, 15) else None for j, v in enumerate(r[:26])] for r in rows]
+    # Keep study columns A..Z (E and P get formulas from tt_auto) and add the Outsourced column.
+    return [[v if j not in (4, 15) else None for j, v in enumerate(r[:26])] + [None] for r in rows]
 
 
-def extra_tests_sheet(wb, s, kind, examples):
+def tt_auto(ws, first, last):
+    """Lookup key (E), PERT (P) and the Retest % format on Test times-style rows."""
+    for r in range(first, last + 1):
+        ws.cell(r, 5, f'=IF(A{r}="","",A{r}&"|"&D{r})')
+        ws.cell(r, 16, f'=IF(N{r}="","",IF(OR(M{r}="",O{r}=""),N{r},(M{r}+4*N{r}+O{r})/6))').number_format = "0.00"
+        ws.cell(r, 22).number_format = "0%"
+    ws.column_dimensions["E"].hidden = True   # only used to match answers back to the study
+
+
+def extra_tests_sheet(wb, s, kind, key_list=None):
     ws = wb.create_sheet("Extra tests")
-    title(ws, "Extra tests (not listed on the Test times sheet)",
-          "One row per item x test. Same columns as Test times. " + examples)
-    table(ws, 4, s["tt_h"], [[None, kind] + [None] * 24 for _ in range(40)], set(range(1, 27)) - {2, 5, 16},
-          TT_WIDTHS, TT_DV)
+    table(ws, 1, s["tt_h"] + [OUTSOURCED], [[None, kind] + [None] * 25 for _ in range(40)], set(range(1, 28)) - {2, 5, 16},
+          TT_WIDTHS, dict(TT_DV, **({"A": key_list} if key_list else {})))
+    tt_auto(ws, 2, 41)
+    return ws
 
 
 def overview(wb, name, area, scope_lines, sheets, stats):
     ws = wb.active
     ws.title = "Overview"
     title(ws, name, "Deliverable 2 - analyst edition. Part of the QC Laboratory Capacity, Staffing Gap and CAPEX Assessment.")
-    lines = [("Area", area)] + scope_lines + [("", "")] + [("Sheet: " + a, b) for a, b in sheets] + [("", "")] \
-        + [("Colour code", "Yellow = you type. Grey = pre-filled from company records - correct it if it is wrong.")] \
+    lines = [("Area", area)] + scope_lines + [("", "")] + [("Sheet: " + a, b) for a, b in sheets if a != "Overview"] + [("", "")] \
+        + [("How to fill", "Read the 'Guide' sheet first: rules, which sheets take new rows, and what every column means.")] \
         + [("Data basis", t) for t in stats] + [("", ""), ("Respondent", None), ("Date", None), ("Reviewed by (unit head)", None)]
     for i, (a, b) in enumerate(lines, 4):
         ws.cell(i, 1, a).font = Font(bold=True)
@@ -383,11 +381,142 @@ def overview(wb, name, area, scope_lines, sheets, stats):
     ws.column_dimensions["B"].width = 110
 
 
-def help_rows(ws, r, lines):
-    for t in lines:
-        ws.cell(r, 1, "• " + t).font = Font(italic=True, color="595959")
+# Column meanings for the Guide sheet, keyed by header text.
+DESC = {
+    "#": "Question number.", "Question": "The question.", "Answer": "Your answer - short is fine.",
+    "Key (Family ID / Material)": "The item tested: material name (raw materials) or method family ID (finished products).",
+    "Type": "RM = raw material, FP = finished product.",
+    "Description": "Material category, or the products in the family.",
+    "Test": "Test name.",
+    "Lookup key (auto)": "Hidden, automatic: Key | Test joined, used to match your answers back to the study. Do not type.",
+    "Applicable (Y/N)": "Y = you run this test on this item; N = you do not (do not delete the row).",
+    "Instrument": "Main instrument the test occupies.",
+    "Complexity": "Low / Medium / High - how demanding the test is.",
+    "No. of separate methods": "Separate runs this test needs (e.g. 2 actives with separate HPLC methods = 2). Usually 1.",
+    "Campaign group code": "Same code (e.g. G1) on tests run in one instrument sequence; their setup time is then counted once.",
+    "Setup analyst h / sequence": "Hands-on hours to set up one sequence/run (mobile phase, standards, system suitability).",
+    "Setup instrument h / sequence": "Instrument hours per sequence that are not per sample (equilibration, blanks, standards).",
+    "Prep analyst h/sample – MIN": "Optional. Fastest realistic hands-on preparation per sample.",
+    "Prep – MOST LIKELY": "Required. Usual hands-on preparation per sample (weighing, dissolving, diluting, filtering).",
+    "Prep – MAX": "Optional. Slowest realistic preparation per sample.",
+    "Prep PERT (auto)": "Automatic: (MIN + 4 x MOST LIKELY + MAX) / 6; equals MOST LIKELY if MIN or MAX is blank.",
+    "Instrument run h / sample": "Unattended instrument time per sample (run time, oven/LOD time, titrator time).",
+    "Dissolution bath h / sample": "Finished products only: bath time per sample.",
+    "Data processing + doc h / sample": "Integration, calculation, LIMS/logbook entries per sample.",
+    "Review h / sample": "Time a second person spends checking the data per sample.",
+    "Samples per sequence": "Typical number of samples run together in one sequence/run.",
+    "Retest / OOS %": "Share of samples tested again (type 5 for 5%).",
+    "Applies to stability (Y/N)": "Finished products only: Y if the test is also run on stability samples.",
+    "Respondent(s) / source": "Who gave the time, or where it comes from.",
+    "Confidence": "How sure you are of the times: High / Medium / Low.",
+    "Notes / difficulty": "Anything unusual, e.g. 'solution shared with Assay'.",
+    OUTSOURCED: "Y = sent to an external lab. Then enter only in-house time (sampling, sending, checking the report) as Prep; leave instrument times blank.",
+    "Catalog code": "Raw materials: the Test catalog row this test takes its times from. Change it only to point to a different catalog test.",
+    "USP-NF source": "Monograph and section the test comes from.",
+    "Recorded h (lab records)": "Reference: hours recorded by the lab in the past for this test set.",
+    "Recorded test list": "Reference: tests listed in the lab's past records.",
+    # Test catalog
+    "Code": "Short code of the general test; Test times rows find their times by this code.",
+    "Rows using it (auto)": "Automatic: number of Test times rows that use this test and are Applicable = Y.",
+    "Lab catalog time (min)": "Reference: minutes in the lab's existing test catalog.",
+    "Samples per sequence / run": "Typical number of samples run together.",
+    "Notes": "Anything unusual.",
+    # Materials
+    "Material": "Material name (master list first, then names found elsewhere).",
+    "Category": "Active, excipient, colorant, flavour, solvent ...",
+    "# products using (from product formulas)": "Number of products whose formula uses the material.",
+    "Lots / yr (now)": "Lots received and tested per year today.",
+    "Lots / yr (future, blank = growth %)": "Expected lots per year in 2-3 years; blank = the study's default growth.",
+    "Lots used future (auto)": "Hidden, calculated in the study. Leave empty.",
+    "Supplier / pharmacopoeia": "Main supplier(s) and the pharmacopoeia tested to (USP, BP, EP, supplier spec).",
+    "Suppliers (number)": "How many approved suppliers.",
+    "Reduced testing? (none / ID+CoA / skip-lot)": "Whether some lots get reduced testing.",
+    "Status": "Where the name came from; 'Suggested - confirm' and 'Not on master list' rows need a check.",
+    "Same material as (master-list name)": "If this name is the same as a master-list material, give that name.",
+    "Still tested by QC? (Y/N)": "For names not on the master list: is it still tested?",
+    "Also listed as": "Other spellings of the same material.",
+    "USP-NF monograph": "Monograph used to list the tests ('confirm' = matched by hand).",
+    "Recorded h/lot (lab records, worst supplier)": "Reference: total recorded hours per lot.",
+    "USP tests not in lab record": "Reference: tests the monograph has but the lab record does not.",
+    "Lab-record tests not in USP": "Reference: tests the lab record has but the monograph does not.",
+    # FP Volumes / Campaign groups
+    "Product": "Product name and strength.",
+    "Active(s) (from product formulas)": "Active ingredients.", "# Actives": "Number of actives.",
+    "Dosage form (verify)": "Tablet, capsule, syrup ... - correct if wrong.",
+    "Family ID": "Method family: strengths tested with the same methods.",
+    "Release batches / yr (now)": "Release batches tested per year today.",
+    "Stability samples / yr (now)": "Stability samples tested per year today.",
+    "Release batches / yr (future, blank = growth %)": "Expected release batches per year in 2-3 years.",
+    "Stability samples / yr (future)": "Expected stability samples per year in 2-3 years.",
+    "Release used future (auto)": "Hidden, calculated in the study. Leave empty.",
+    "Stability used future (auto)": "Hidden, calculated in the study. Leave empty.",
+    "Stability time points / yr per batch on stability": "Pulls per year for one batch on stability.",
+    "IPC samples tested by QC per batch": "In-process samples QC tests per batch.",
+    "Active ingredient": "Active shared by several families.", "# families": "Number of families using it.",
+    "Families": "Family IDs.", "Same column + mobile phase? (Y/N/partly)": "Can they run in one HPLC sequence?",
+    "Group code": "Code to put in Test times column J (Campaign group code).",
+}
+
+GENERAL_RULES = [
+    ("Colours", "Yellow = you type. Grey = pre-filled or automatic; type over a grey value only if it is wrong."),
+    ("Units", "Times in HOURS (0.25 = 15 min) per sample unless the header says per sequence."),
+    ("Minimum effort", "Only 'Prep – MOST LIKELY' is required; MIN and MAX are optional. Blank = not known."),
+    ("Hands-on vs instrument", "Analyst columns = hands-on time only. Unattended time goes in 'Instrument run'."),
+    ("Shared sample solution", "When one solution serves several tests (e.g. Assay + Related substances, or pH + Clarity "
+     "from one solution), enter its preparation once, on the first test. On the other tests enter only their extra "
+     "hands-on time and write 'solution shared with <test>' in Notes."),
+    ("Shared sequence", "Tests run in the same instrument sequence get the same Campaign group code (column J); "
+     "their setup time is then counted once."),
+    ("Outsourced tests", "Outsourced = Y. Enter only in-house time (sampling, sending, checking the report) as Prep; "
+     "leave instrument times blank."),
+    ("Columns", "Do not insert, delete or reorder columns - answers are collected by column position."),
+    ("Adding rows", "Use the empty rows at the bottom of a sheet. If you need more: select the last empty row, Ctrl+C, "
+     "right-click the row number below it, 'Insert Copied Cells' - colours, dropdowns and formulas come with it."),
+]
+
+
+def guide(ws, wb, sheets, rules):
+    """sheets: [(sheet, use, may add rows)]. Then the meaning of every column of each table sheet (row 1 headers)."""
+    ws.column_dimensions["A"].width = 38
+    ws.column_dimensions["B"].width = 110
+    r = 1
+
+    def head(*vals):
+        nonlocal r
+        for j, v in enumerate(vals, 1):
+            c = ws.cell(r, j, v)
+            c.fill, c.font, c.border = HEAD, Font(bold=True, color="FFFFFF"), BOX
         r += 1
-    return r
+
+    def line(a, b, fill=None):
+        nonlocal r
+        for j, v in enumerate((a, b), 1):
+            c = ws.cell(r, j, v)
+            c.alignment, c.border = WRAP, BOX
+            if fill:
+                c.fill = fill
+        ws.cell(r, 1).font = Font(bold=True)
+        r += 1
+
+    head("How to fill", "")
+    for a, b in GENERAL_RULES + rules:
+        line(a, b)
+    r += 1
+    head("Sheet", "Use  ·  Can I add rows?")
+    for name, use, add in sheets:
+        line(name, f"{use}  ·  {add}")
+    for name, *_ in sheets:
+        if name in ("Overview", "Guide"):
+            continue
+        sh = wb[name]
+        r += 1
+        head(f"{name} - columns", "Meaning")
+        for c in sh[1]:
+            if c.value is None:
+                continue
+            col = c.column_letter
+            line(f"{col} · {c.value}", DESC.get(c.value, ""), AUTO if sh.column_dimensions[col].hidden else None)
+    ws.freeze_panes = "A2"
 
 
 # ---------------------------------------------------------------- RM
@@ -490,19 +619,20 @@ def usp_groups(tests):
     return g
 
 
-RM_TIMES_HELP = [
-    "One row per material x compendial test, taken from the USP-NF monograph. Set 'Applicable' = N for tests you do not run "
-    "on that material; add tests that are missing on the 'Extra tests' sheet.",
-    "Grey times are linked to the 'Test catalog' sheet, where each general test is timed once. Type over a grey time only "
-    "if this material really takes different time.",
-    "Yellow times: material-specific HPLC/GC tests, and materials without a monograph. Hours per sample; give MIN / MOST "
-    "LIKELY / MAX for preparation. Analyst time = hands-on only; unattended instrument time goes in 'Instrument run'.",
-    TIMES_HELP[4],
+RM_RULES = [
+    ("Fill order", "1) Test catalog - each general test is timed once and copied to every material that uses it. "
+     "2) Test times - filter Instrument = HPLC or GC: only those rows (and materials without a monograph) need their own times. "
+     "3) Materials, then Questions."),
+    ("Grey times on Test times", "Come from the Test catalog by Catalog code. Type over one only if this material really "
+     "takes a different time (that cell then stops following the catalog)."),
+    ("Missing / unused tests", "Unused test: Applicable = N (do not delete the row). Missing test: add it on 'Extra tests'."),
 ]
-CAT_H = ["Code", "Test", "Instrument", "Rows using it", "Lab catalog time (min)", "Setup analyst h / sequence",
+CAT_H = ["Code", "Test", "Instrument", "Rows using it (auto)", "Lab catalog time (min)", "Setup analyst h / sequence",
          "Setup instrument h / sequence", "Prep analyst h/sample – MIN", "Prep – MOST LIKELY", "Prep – MAX",
-         "Instrument run h / sample", "Data processing + doc h / sample", "Review h / sample", "Samples per sequence / run", "Notes"]
-CAT_LINK = {11: "F", 12: "G", 13: "H", 14: "I", 15: "J", 17: "K", 19: "L", 20: "M", 21: "N"}  # Test times col -> catalog col
+         "Instrument run h / sample", "Data processing + doc h / sample", "Review h / sample", "Samples per sequence / run",
+         OUTSOURCED, "Notes"]
+CAT_LINK = {11: "F", 12: "G", 13: "H", 14: "I", 15: "J", 17: "K", 19: "L", 20: "M", 21: "N", 27: "O"}  # Test times col -> catalog col
+CAT_LAST = 200   # catalog lookups cover rows 2..CAT_LAST
 SPECIFIC = {"HPLC", "GC"}
 
 
@@ -553,14 +683,12 @@ def build_rm(s, lead, raw, dbmap):
     overview(wb, "Raw Material Analyst Questionnaire", "QC Chemical Laboratory - raw materials (APIs, excipients, colorants, flavours, solvents)",
              [("Who fills it", "Each analyst who tests incoming raw materials (2-3 people). Each person fills a separate copy."),
               ("Time needed", "About 2 hours: questions 20 min, test catalog 30 min, the rest on the tables.")],
-             RM_SHEETS, stats)
+             [(a, b) for a, b, _ in RM_SHEETS if a != "Overview"], stats)
+    gws = wb.create_sheet("Guide")
     qsheet(wb.create_sheet("Questions"), RM_QUESTIONS, "Answer in the yellow column. Short answers are fine.")
 
     # ---- Materials (master list + purchase list + time records, one row per name)
     ws = wb.create_sheet("Materials")
-    title(ws, "Materials and lots per year",
-          "Master-list materials first, then names found only in the purchase list or the lab time records. "
-          "For those: still tested by QC? If yes, give lots/yr and the master-list name if it is the same material.")
     also = collections.defaultdict(set)
     for name, _, st, sm in rm_raw:
         if sm and st.startswith("On master list"):
@@ -600,49 +728,71 @@ def build_rm(s, lead, raw, dbmap):
                        "Same material as (master-list name)", "Still tested by QC? (Y/N)", "Also listed as",
                        "USP-NF monograph", "Recorded h/lot (lab records, worst supplier)",
                        "USP tests not in lab record", "Lab-record tests not in USP"]
-    table(ws, 4, hdr, rows + sugg + rest + new, {4, 5, 7, 8, 9, 10, 12, 13},
+    table(ws, 1, hdr, rows + sugg + rest + new, {4, 5, 7, 8, 9, 10, 12, 13},
           [34, 16, 9, 10, 12, 1, 20, 26, 10, 16, 22, 30, 10, 36, 30, 11, 22, 22], {"J": '"None,ID + CoA,Skip-lot"', "M": '"Y,N"'})
     for i in range(len(rows) + len(sugg) + len(rest) + 1, len(rows) + len(sugg) + len(rest) + 11):
-        ws.cell(4 + i, 1).fill = INPUT
+        ws.cell(1 + i, 1).fill = INPUT
+    ws.column_dimensions["F"].hidden = True   # study formula column
 
     # ---- Test catalog
     ws = wb.create_sheet("Test catalog")
-    title(ws, "General tests - time each one once",
-          "These times are used for every material row that links to the test. Hours per sample unless the header says per sequence.")
-    cat_rows = [[code, name, instr, codes[code], "; ".join(f"{n} {', '.join(str(v) for v in labcat[n])}" for n in lab if n in labcat) or None]
-                + [None] * 10 for code, (name, instr, lab) in USP_CATALOG.items()]
-    table(ws, 4, CAT_H, cat_rows, set(range(6, 16)), [9, 44, 13, 8, 18, 10, 10, 10, 10, 10, 10, 10, 10, 10, 30])
-    cat_row = {code: 5 + i for i, code in enumerate(USP_CATALOG)}
+    cat_rows = [[code, name, instr, f"=COUNTIFS('Test times'!$AB:$AB,$A{i},'Test times'!$F:$F,\"Y\")",
+                 "; ".join(f"{n} {', '.join(str(v) for v in labcat[n])}" for n in lab if n in labcat) or None]
+                + [None] * 11 for i, (code, (name, instr, lab)) in enumerate(USP_CATALOG.items(), 2)]
+    table(ws, 1, CAT_H, cat_rows, set(range(6, 17)), [9, 44, 13, 8, 18, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 30],
+          {"O": '"Y,N"'})
 
     # ---- Test times
     ws = wb.create_sheet("Test times")
-    title(ws, "Test times per material (hours)")
-    r0 = help_rows(ws, 2, RM_TIMES_HELP) + 1
-    table(ws, r0, s["tt_h"] + ["Catalog code", "USP-NF source", "Recorded h (lab records)", "Recorded test list"],
-          [row + ref for row, _, ref in tt], TT_INPUT, TT_WIDTHS + [9, 40, 11, 50], TT_DV)
-    for i, (row, code, _) in enumerate(tt, r0 + 1):
-        if code:
+    table(ws, 1, s["tt_h"] + [OUTSOURCED, "Catalog code", "USP-NF source", "Recorded h (lab records)", "Recorded test list"],
+          [row + [None] + ref for row, _, ref in tt], TT_INPUT, TT_WIDTHS + [9, 40, 11, 50], TT_DV)
+    tt_auto(ws, 2, len(tt) + 1)
+    for i, (row, code, _) in enumerate(tt, 2):
+        if code:   # look up by Catalog code (AB), so sorting either sheet keeps the links right
             for col, ccol in CAT_LINK.items():
-                c = ws.cell(i, col, f"=IF('Test catalog'!{ccol}{cat_row[code]}=\"\",\"\",'Test catalog'!{ccol}{cat_row[code]})")
-                c.fill = AUTO
-    for col in ("E", "P", "R", "W"):   # unused for RM; kept (hidden) so columns paste back by position
+                v = f"INDEX('Test catalog'!${ccol}$2:${ccol}${CAT_LAST},MATCH($AB{i},'Test catalog'!$A$2:$A${CAT_LAST},0))"
+                ws.cell(i, col, f'=IFERROR(IF({v}="","",{v}),"")').fill = AUTO
+    for col in ("R", "W"):   # finished-product columns; kept (hidden) so columns paste back by position
         ws.column_dimensions[col].hidden = True
 
-    extra_tests_sheet(wb, s, "RM", "Examples: in-house or supplier-specific tests, residual solvents by GC, heavy metals by ICP.")
+    extra_tests_sheet(wb, s, "RM", "Materials!$A$2:$A$1000")
+    guide(gws, wb, RM_SHEETS, RM_RULES)
     no_mono = [r[0] for r in s["rm"] if not usp.get(r[0], (0, 0, []))[2]]
     return wb, dict(mats=len(mats), mapped=n_mapped, rows=len(tt), cat=len(USP_CATALOG), no_mono=no_mono,
                     sugg=len(sugg), other=len(rest), raw=len(raw), unlisted=len(unlisted), m=m,
                     cats=collections.Counter(r[1] for r in s["rm"]))
 
 
-RM_SHEETS = [("Questions", "Answer sections A–E."),
-             ("Materials", "Lots/yr now and future, suppliers, reduced testing - and whether unlisted names are still tested."),
-             ("Test catalog", "Time each general test once (LOD, KF, pH, IR, titration ...)."),
-             ("Test times", "One row per material x compendial test: confirm Applicable; time the HPLC/GC tests."),
-             ("Extra tests", "Tests you run that are missing from Test times.")]
+RM_SHEETS = [("Overview", "Scope; your name and date.", "No."),
+             ("Guide", "Rules, and what each column means.", "No."),
+             ("Questions", "Answer sections A–E.", "No."),
+             ("Materials", "Lots/yr now and future, suppliers, reduced testing - and whether unlisted names are still tested.",
+              "Yes - 10 empty rows at the bottom for materials that are missing."),
+             ("Test catalog", "Time each general test once (LOD, KF, pH, IR, titration ...).", "No - a missing general test goes on 'Extra tests'."),
+             ("Test times", "One row per material x compendial test: confirm Applicable; time the HPLC/GC tests.",
+              "No - set Applicable = N instead of deleting; missing tests go on 'Extra tests'. Sorting and filtering are fine."),
+             ("Extra tests", "Tests you run that are missing from Test times (in-house tests, residual solvents, ICP ...).",
+              "Yes - 40 empty rows; pick the material from the dropdown in column A.")]
 
 
 # ---------------------------------------------------------------- FP
+FP_SHEETS = [("Overview", "Scope; your name and date.", "No."),
+             ("Guide", "Rules, and what each column means.", "No."),
+             ("Questions", "Respondent profile, batches & stability, methods, workload.", "No."),
+             ("Volumes", "Release batches and stability samples per year for each product.",
+              "Yes - 10 empty rows at the bottom for new products."),
+             ("Test times", "Time per test for each method family - the core input.",
+              "No - set Applicable = N instead of deleting; missing tests go on 'Extra tests'. Sorting and filtering are fine."),
+             ("Campaign groups", "Families sharing an active ingredient - can they share an HPLC sequence?", "Yes, at the bottom."),
+             ("Extra tests", "Tests missing from the list (IPC, blend uniformity, water content, preservative assay ...).",
+              "Yes - 40 empty rows.")]
+FP_RULES = [
+    ("Families", "A family = all strengths tested with the same methods. If one strength needs a different method, say so in Notes."),
+    ("Campaign groups", "Families sharing an active: if they use the same column and mobile phase, give them one group "
+     "code (e.g. G1) and put it in Test times column J."),
+]
+
+
 def campaign_candidates(fp):
     fams = collections.OrderedDict()
     for r in fp:
@@ -672,34 +822,31 @@ def build_fp(s):
     overview(wb, "Finished Product Analyst Questionnaire", "QC Chemical Laboratory - finished products (release, stability, in-process)",
              [("Who fills it", "Each analyst who tests finished products (2-3 people). Each person fills a separate copy."),
               ("Time needed", "About 3 hours. Start with the families you test most often.")],
-             [("Questions", "Respondent profile, batches & stability, methods, workload."),
-              ("Volumes", "Release batches and stability samples per year for each product."),
-              ("Test times", "Time per test for each method family - the core input."),
-              ("Campaign groups", "Families sharing an active ingredient - can they share an HPLC sequence?"),
-              ("Extra tests", "Tests missing from the list (IPC, blend uniformity, water content, preservative assay, etc.).")], stats)
-
+             [(a, b) for a, b, _ in FP_SHEETS], stats)
+    gws = wb.create_sheet("Guide")
     qsheet(wb.create_sheet("Questions"), FP_QUESTIONS, "Answer in the yellow column. Short answers are fine.")
 
     ws = wb.create_sheet("Volumes")
-    title(ws, "Release batches and stability samples per year", "One row per product. Leave the narrow grey columns K-L empty.")
-    rows = [list(r[:10]) + [None, None, r[12], None, None] for r in s["fp"]]
-    table(ws, 4, s["fp_h"] + ["Stability time points / yr per batch on stability", "IPC samples tested by QC per batch"],
+    rows = [list(r[:10]) + [None, None, r[12], None, None] for r in s["fp"]] + [[None] * 15 for _ in range(10)]
+    table(ws, 1, s["fp_h"] + ["Stability time points / yr per batch on stability", "IPC samples tested by QC per batch"],
           rows, {4, 5, 6, 7, 8, 9, 10, 13, 14, 15}, [30, 30, 8, 12, 8, 10, 10, 12, 12, 12, 1, 1, 30, 14, 14],
           {"H": '"Marketed,Pipeline / no formula,Discontinued"'})
+    for i in range(len(s["fp"]) + 2, len(rows) + 2):
+        for j in (1, 2, 3):
+            ws.cell(i, j).fill = INPUT
+    for col in ("K", "L"):   # study formula columns
+        ws.column_dimensions[col].hidden = True
 
     ws = wb.create_sheet("Test times")
-    title(ws, "Test times per method family (hours)")
-    r0 = help_rows(ws, 2, TIMES_HELP[:3] + [TIMES_HELP[4],
-                   "A family = all strengths tested with the same methods. If one strength needs a different method, say so in Notes."]) + 1
-    table(ws, r0, s["tt_h"], tt_rows(fp_rows), TT_INPUT, TT_WIDTHS, TT_DV)
+    table(ws, 1, s["tt_h"] + [OUTSOURCED], tt_rows(fp_rows), TT_INPUT, TT_WIDTHS, TT_DV)
+    tt_auto(ws, 2, len(fp_rows) + 1)
 
     ws = wb.create_sheet("Campaign groups")
-    title(ws, "Families that share an active ingredient",
-          "If they use the same column and mobile phase, give them one group code (e.g. G1). The code goes into Test times column J.")
-    table(ws, 4, ["Active ingredient", "# families", "Families", "Same column + mobile phase? (Y/N/partly)",
+    table(ws, 1, ["Active ingredient", "# families", "Families", "Same column + mobile phase? (Y/N/partly)",
                   "Group code", "Notes"], camp, {4, 5, 6}, [36, 10, 40, 16, 10, 40], {"D": '"Y,N,Partly"'})
 
-    extra_tests_sheet(wb, s, "FP", "Examples: blend uniformity, water content (KF), preservative assay, residual solvents, nasal spray delivered dose.")
+    extra_tests_sheet(wb, s, "FP")
+    guide(gws, wb, FP_SHEETS, FP_RULES)
     return wb, dict(products=len(s["fp"]), fams=len(fams), no_active=no_active, rows=len(fp_rows), camp=camp,
                     forms=collections.Counter(r[3] or "not stated" for r in s["fp"]))
 
@@ -741,7 +888,7 @@ def main():
 
     write_md(os.path.join(OUT, "RM_Analyst_Questionnaire.md"), "Raw Material Analyst Questionnaire",
              "QC Chemical Laboratory — raw materials", "each analyst testing incoming materials (2–3 people, one copy each)",
-             RM_SHEETS,
+             [(a, b) for a, b, _ in RM_SHEETS if a != "Overview"],
              [f"{rm['mats']} materials on the master list ("
               + ", ".join(f"{c} {n}" for n, c in rm["cats"].most_common(4)) + ", others); "
               f"{rm['mapped']} have a USP–NF monograph.",
@@ -762,7 +909,8 @@ def main():
 
     write_md(os.path.join(OUT, "FP_Analyst_Questionnaire.md"), "Finished Product Analyst Questionnaire",
              "QC Chemical Laboratory — finished products", "each analyst testing release and stability samples (2–3 people, one copy each)",
-             [("Questions", "Answer sections A–E below."),
+             [("Guide", "Rules, which sheets take new rows, and what every column means."),
+              ("Questions", "Answer sections A–E below."),
               ("Volumes", "Release batches/yr and stability samples/yr per product, now and future; stability time points; IPC samples."),
               ("Test times", f"{fp['rows']} family × test rows (assay, related substances, dissolution, CU, ID, other)."),
               ("Campaign groups", f"{len(fp['camp'])} actives shared by more than one family: can they share an HPLC sequence?"),
