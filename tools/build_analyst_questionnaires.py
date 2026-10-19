@@ -421,7 +421,7 @@ DESC = {
     "Confidence": "How sure you are of the times: High / Medium / Low.",
     "Notes / difficulty": "Anything unusual, e.g. 'solution shared with Assay'.",
     OUTSOURCED: "Y = sent to an external lab. Then enter only in-house time (sampling, sending, checking the report) as Prep; leave instrument times blank.",
-    "Catalog code": "Raw materials: the Test catalog row this test takes its times from. Change it only to point to a different catalog test.",
+    "Catalog code": "The Test catalog row this test takes its times from. Change it only to point to a different catalog test.",
     "USP-NF source": "Monograph and section the test comes from.",
     "Recorded h (lab records)": "Reference: hours recorded by the lab in the past for this test set.",
     "Recorded test list": "Reference: tests listed in the lab's past records.",
@@ -630,19 +630,26 @@ def usp_groups(tests):
     return g
 
 
+def cat_rules(one, own, item, differs):
+    """Guide rules for a Test catalog. own = (example test, its minutes, catalog code, rest minutes, new code)."""
+    test, mins, code, rest, new = own
+    return [
+        ("Catalog time", f"One catalog row = the time of ONE test on ONE sample (e.g. {one}). Every Test times row "
+         "with that Catalog code gets it, so each row is counted once."),
+        ("One test needs its own time", f"e.g. {test} {mins} min while the rest of {code} stays {rest}: on Test catalog copy the "
+         f"{code} row into a new row (Insert Copied Cells), give it a new Code (e.g. {new}) and its own times; on Test times "
+         f"filter Test = {test} and change Catalog code to {new}. Those rows then follow the new row."),
+        (f"One {item} differs", f"Type over that row's grey cells on Test times (e.g. {differs}). "
+         "That cell then stops following the catalog."),
+        ("Missing / unused tests", "Unused test: Applicable = N (do not delete the row). Missing test: add it on 'Extra tests'."),
+    ]
+
+
 RM_RULES = [
     ("Fill order", "1) Test catalog - each general test is timed once and copied to every material that uses it. "
      "2) Test times - filter Instrument = HPLC or GC: only those rows (and materials without a monograph) need their own times. "
      "3) Materials, then Questions."),
-    ("Catalog time", "One catalog row = the time of ONE test on ONE sample (e.g. one chloride limit). Every Test times row "
-     "with that Catalog code gets it, so Chloride and Sulfate rows are each counted once."),
-    ("One test needs its own time", "e.g. Sulfate 18 min while the rest of LIMIT stays 15: on Test catalog copy the LIMIT row "
-     "into a new row (Insert Copied Cells), give it a new Code (e.g. SULF) and its own times; on Test times filter "
-     "Test = Sulfate and change Catalog code to SULF. Those rows then follow the new row."),
-    ("One material differs", "Type over that row's grey cells on Test times (e.g. a Kjeldahl nitrogen titration). "
-     "That cell then stops following the catalog."),
-    ("Missing / unused tests", "Unused test: Applicable = N (do not delete the row). Missing test: add it on 'Extra tests'."),
-]
+] + cat_rules("one chloride limit", ("Sulfate", 18, "LIMIT", 15, "SULF"), "material", "a Kjeldahl nitrogen titration")
 CAT_H = ["Code", "Test", "Instrument", "Rows using it (auto)", "Lab catalog time (min)", "Setup analyst h / sequence",
          "Setup instrument h / sequence", "Prep analyst h/sample – MIN", "Prep – MOST LIKELY", "Prep – MAX",
          "Instrument run h / sample", "Data processing + doc h / sample", "Review h / sample", "Samples per sequence / run",
@@ -650,6 +657,26 @@ CAT_H = ["Code", "Test", "Instrument", "Rows using it (auto)", "Lab catalog time
 CAT_LINK = {11: "F", 12: "G", 13: "H", 14: "I", 15: "J", 17: "K", 19: "L", 20: "M", 21: "N", 27: "O"}  # Test times col -> catalog col
 CAT_LAST = 200   # catalog lookups cover rows 2..CAT_LAST
 SPECIFIC = {"HPLC", "GC"}
+
+
+def catalog_sheet(wb, rows):
+    """'Test catalog' sheet; rows = [(code, test, instrument, lab catalog time)]."""
+    ws = wb.create_sheet("Test catalog")
+    cat_rows = [[code, name, instr, f"=COUNTIFS('Test times'!$AB:$AB,$A{i},'Test times'!$F:$F,\"Y\")", lab] + [None] * 11
+                for i, (code, name, instr, lab) in enumerate(rows, 2)]
+    table(ws, 1, CAT_H, cat_rows, set(range(6, 17)), [9, 44, 13, 8, 18, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 30],
+          {"O": '"Y,N"'})
+    grey_out(ws, '$O2="Y"')
+    return ws
+
+
+def link_catalog(ws, codes):
+    """Test times rows with a Catalog code (AB) look their times up by code, so sorting either sheet keeps them right."""
+    for i, code in enumerate(codes, 2):
+        if code:
+            for col, ccol in CAT_LINK.items():
+                v = f"INDEX('Test catalog'!${ccol}$2:${ccol}${CAT_LAST},MATCH($AB{i},'Test catalog'!$A$2:$A${CAT_LAST},0))"
+                ws.cell(i, col, f'=IFERROR(IF({v}="","",{v}),"")').fill = AUTO
 
 
 def build_rm(s, lead, raw, dbmap):
@@ -750,25 +777,15 @@ def build_rm(s, lead, raw, dbmap):
         ws.cell(1 + i, 1).fill = INPUT
     ws.column_dimensions["F"].hidden = True   # study formula column
 
-    # ---- Test catalog
-    ws = wb.create_sheet("Test catalog")
-    cat_rows = [[code, name, instr, f"=COUNTIFS('Test times'!$AB:$AB,$A{i},'Test times'!$F:$F,\"Y\")",
-                 "; ".join(f"{n} {', '.join(str(v) for v in labcat[n])}" for n in lab if n in labcat) or None]
-                + [None] * 11 for i, (code, (name, instr, lab)) in enumerate(USP_CATALOG.items(), 2)]
-    table(ws, 1, CAT_H, cat_rows, set(range(6, 17)), [9, 44, 13, 8, 18, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 30],
-          {"O": '"Y,N"'})
-    grey_out(ws, '$O2="Y"')
+    catalog_sheet(wb, [(code, name, instr, "; ".join(f"{n} {', '.join(str(v) for v in labcat[n])}" for n in lab if n in labcat) or None)
+                       for code, (name, instr, lab) in USP_CATALOG.items()])
 
     # ---- Test times
     ws = wb.create_sheet("Test times")
     table(ws, 1, s["tt_h"] + [OUTSOURCED, "Catalog code", "USP-NF source", "Recorded h (lab records)", "Recorded test list"],
           [row + [None] + ref for row, _, ref in tt], TT_INPUT, TT_WIDTHS + [9, 40, 11, 50], TT_DV)
     tt_auto(ws, 2, len(tt) + 1)
-    for i, (row, code, _) in enumerate(tt, 2):
-        if code:   # look up by Catalog code (AB), so sorting either sheet keeps the links right
-            for col, ccol in CAT_LINK.items():
-                v = f"INDEX('Test catalog'!${ccol}$2:${ccol}${CAT_LAST},MATCH($AB{i},'Test catalog'!$A$2:$A${CAT_LAST},0))"
-                ws.cell(i, col, f'=IFERROR(IF({v}="","",{v}),"")').fill = AUTO
+    link_catalog(ws, [code for _, code, _ in tt])
     for col in ("R", "W"):   # finished-product columns; kept (hidden) so columns paste back by position
         ws.column_dimensions[col].hidden = True
 
@@ -799,12 +816,36 @@ FP_SHEETS = [("Overview", "Scope; your name and date.", "No."),
              ("Questions", "Respondent profile, batches & stability, methods, workload.", "No."),
              ("Volumes", "Release batches and stability samples per year for each product.",
               "Yes - 10 empty rows at the bottom for new products."),
-             ("Test times", "Time per test for each method family - the core input.",
+             ("Test catalog", "Time each general test once (appearance, weight, hardness, friability, disintegration, water ...).",
+              "Only to give one test its own time (see 'One test needs its own time' above); do not sort or delete rows."),
+             ("Test times", "One row per family x test: confirm Applicable; time the HPLC tests (grey rows come from the catalog).",
               "No - set Applicable = N instead of deleting; missing tests go on 'Extra tests'. Sorting and filtering are fine."),
              ("Campaign groups", "Families sharing an active ingredient - can they share an HPLC sequence?", "Yes, at the bottom."),
              ("Extra tests", "Tests missing from the list (IPC, blend uniformity, water content, preservative assay ...).",
               "Yes - 40 empty rows.")]
+# General finished-product tests, timed once on 'Test catalog'. code -> (name, instrument, applies to stability)
+FP_CATALOG = collections.OrderedDict([
+    ("APPEAR", ("Appearance / description", "Other / bench", "Y")),
+    ("AVG_WT", ("Average weight / uniformity of mass", "Other / bench", "N")),
+    ("HARD", ("Hardness (with thickness / diameter)", "Other / bench", "Y")),
+    ("FRIAB", ("Friability", "Other / bench", "N")),
+    ("DISINT", ("Disintegration", "Other / bench", "Y")),
+    ("WATER", ("Water content - KF (or LOD if that is what you run)", "KF titrator", "Y")),
+    ("PH", ("pH", "Other / bench", "Y")),
+    ("FILL", ("Fill volume / deliverable volume", "Other / bench", "N")),
+])
+# Dosage form -> general tests. Replaces the study's single 'Other tests (non-HPLC ...)' row per family.
+FP_FORM_TESTS = {"Tablet": ["APPEAR", "AVG_WT", "HARD", "FRIAB", "DISINT", "WATER"],
+                 "Capsule": ["APPEAR", "AVG_WT", "DISINT", "WATER"],
+                 "Sachet": ["APPEAR", "AVG_WT", "WATER"],
+                 "Nasal spray": ["APPEAR", "PH", "FILL"]}
+
 FP_RULES = [
+    ("Fill order", "1) Test catalog - each general test is timed once and copied to every family that uses it. "
+     "2) Test times - filter Instrument = HPLC: those rows need their own times per family. 3) Volumes, then Questions."),
+] + cat_rules("one friability test", ("Disintegration", 40, "DISINT", 20, "DIS_FC"), "family",
+              "disintegration of a film-coated tablet that takes much longer") + [
+    ("Micro tests", "Microbial tests are done by the Micro lab - not part of this questionnaire."),
     ("Families", "A family = all strengths tested with the same methods. If one strength needs a different method, say so in Notes."),
     ("Campaign groups", "Families sharing an active: if they use the same column and mobile phase, give them one group "
      "code (e.g. G1) and put it in Test times column J."),
@@ -832,8 +873,22 @@ def campaign_candidates(fp):
 def build_fp(s):
     wb = Workbook()
     fams, camp, no_active = campaign_candidates(s["fp"])
-    fp_rows = [r for r in s["tt"] if r[1] == "FP"]
+    fp_rows, codes = [], []
+    for r in tt_rows([r for r in s["tt"] if r[1] == "FP"]):
+        if not r[3].startswith("Other tests"):
+            fp_rows.append(r)
+            codes.append(None)
+            continue
+        forms = fams[r[0]]["form"] if r[0] in fams else set()
+        for code in dict.fromkeys(c for f in sorted(forms) for c in FP_FORM_TESTS.get(f, ["APPEAR"])):
+            name, instr, stab = FP_CATALOG[code]
+            row = list(r)
+            row[3], row[5], row[6], row[7], row[8], row[22] = name, "Y", instr, "Low", 1, stab
+            fp_rows.append(row)
+            codes.append(code)
     stats = [f"{len(s['fp'])} products in {len(fams)} method families and {len(fp_rows)} family x test rows.",
+             f"{len(FP_CATALOG)} general tests (appearance, weight, hardness, disintegration, water ...) are timed once on "
+             "'Test catalog' and linked to the family rows by dosage form.",
              f"{len(camp)} active ingredients appear in more than one family - candidates for shared HPLC sequences ('Campaign groups').",
              f"{len(no_active)} families have no active ingredient in the product formulas ({', '.join(no_active)}) - name the actives in Test times Notes.",
              "No recorded finished-product test times exist yet (lab records cover raw materials only), so all times are new estimates."]
@@ -855,9 +910,14 @@ def build_fp(s):
     for col in ("K", "L"):   # study formula columns
         ws.column_dimensions[col].hidden = True
 
+    ws = catalog_sheet(wb, [(code, name, instr, None) for code, (name, instr, _) in FP_CATALOG.items()])
+    ws.column_dimensions["E"].hidden = True   # no lab catalog times for finished products
+
     ws = wb.create_sheet("Test times")
-    table(ws, 1, s["tt_h"] + [OUTSOURCED], tt_rows(fp_rows), TT_INPUT, TT_WIDTHS, TT_DV)
+    table(ws, 1, s["tt_h"] + [OUTSOURCED, "Catalog code"], [row + [c] for row, c in zip(fp_rows, codes)],
+          TT_INPUT, TT_WIDTHS + [9], TT_DV)
     tt_auto(ws, 2, len(fp_rows) + 1)
+    link_catalog(ws, codes)
 
     ws = wb.create_sheet("Campaign groups")
     table(ws, 1, ["Active ingredient", "# families", "Families", "Same column + mobile phase? (Y/N/partly)",
@@ -930,7 +990,8 @@ def main():
              [("Guide", "Rules, which sheets take new rows, and what every column means."),
               ("Questions", "Answer sections A–E below."),
               ("Volumes", "Release batches/yr and stability samples/yr per product, now and future; stability time points; IPC samples."),
-              ("Test times", f"{fp['rows']} family × test rows (assay, related substances, dissolution, CU, ID, other)."),
+              ("Test catalog", f"Time each general test once ({len(FP_CATALOG)} tests: appearance, weight, hardness, friability, disintegration, water, pH, fill)."),
+              ("Test times", f"{fp['rows']} family × test rows (assay, related substances, dissolution, CU, ID, and the general tests by dosage form)."),
               ("Campaign groups", f"{len(fp['camp'])} actives shared by more than one family: can they share an HPLC sequence?"),
               ("Extra tests", "Add tests that are missing (blend uniformity, KF, preservative assay, delivered dose).")],
              [f"{fp['products']} products in {fp['fams']} method families; dosage forms: "

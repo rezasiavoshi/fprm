@@ -17,7 +17,8 @@ Your answers give the time each test takes and how many samples arrive, which sh
 | Guide | Rules, which sheets take new rows, and what every column means. |
 | Questions | Answer sections A–E below. |
 | Volumes | Release batches/yr and stability samples/yr per product, now and future; stability time points; IPC samples. |
-| Test times | 385 family × test rows (assay, related substances, dissolution, CU, ID, other). |
+| Test catalog | Time each general test once (8 tests: appearance, weight, hardness, friability, disintegration, water, pH, fill). |
+| Test times | 691 family × test rows (assay, related substances, dissolution, CU, ID, and the general tests by dosage form). |
 | Campaign groups | 13 actives shared by more than one family: can they share an HPLC sequence? |
 | Extra tests | Add tests that are missing (blend uniformity, KF, preservative assay, delivered dose). |
 
