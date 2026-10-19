@@ -138,7 +138,8 @@ USP_CATALOG = collections.OrderedDict([
     ("COND", ("Conductivity", "Other / bench", ["Conductivity"])),
     ("TOC", ("Total organic carbon", "Other / bench", [])),
     ("CLAR", ("Clarity / colour of solution", "Other / bench", ["Clarity of solution", "Color of Solution"])),
-    ("LIMIT", ("Limit test - wet chemistry (chloride, sulfate, iron, arsenic, ...)", "Other / bench", ["Chloride", "Sulfate"])),
+    ("LIMIT", ("Limit test - wet chemistry (chloride, sulfate, iron, barium, ...)", "Other / bench", ["Chloride", "Sulfate"])),
+    ("LIM_TOX", ("Arsenic / lead / mercury limit (digestion or special apparatus)", "Other / bench", [])),
     ("GRAV", ("Gravimetric limit (water-soluble, insoluble matter, residue on evaporation)", "Other / bench", ["Residue on evaporation"])),
     ("AAS", ("Element limit by AAS / ICP (Pb, Cd, Ni, Al, ...)", "AAS / ICP", [])),
     ("TITR", ("Assay or test by titration", "Other / bench", [])),
@@ -633,8 +634,13 @@ RM_RULES = [
     ("Fill order", "1) Test catalog - each general test is timed once and copied to every material that uses it. "
      "2) Test times - filter Instrument = HPLC or GC: only those rows (and materials without a monograph) need their own times. "
      "3) Materials, then Questions."),
-    ("Grey times on Test times", "Come from the Test catalog by Catalog code. Type over one only if this material really "
-     "takes a different time (that cell then stops following the catalog)."),
+    ("Catalog time", "One catalog row = the time of ONE test on ONE sample (e.g. one chloride limit). Every Test times row "
+     "with that Catalog code gets it, so Chloride and Sulfate rows are each counted once."),
+    ("One test needs its own time", "e.g. Sulfate 18 min while the rest of LIMIT stays 15: on Test catalog copy the LIMIT row "
+     "into a new row (Insert Copied Cells), give it a new Code (e.g. SULF) and its own times; on Test times filter "
+     "Test = Sulfate and change Catalog code to SULF. Those rows then follow the new row."),
+    ("One material differs", "Type over that row's grey cells on Test times (e.g. a Kjeldahl nitrogen titration). "
+     "That cell then stops following the catalog."),
     ("Missing / unused tests", "Unused test: Applicable = N (do not delete the row). Missing test: add it on 'Extra tests'."),
 ]
 CAT_H = ["Code", "Test", "Instrument", "Rows using it (auto)", "Lab catalog time (min)", "Setup analyst h / sequence",
@@ -779,7 +785,8 @@ RM_SHEETS = [("Overview", "Scope; your name and date.", "No."),
              ("Questions", "Answer sections A–E.", "No."),
              ("Materials", "Lots/yr now and future, suppliers, reduced testing - and whether unlisted names are still tested.",
               "Yes - 10 empty rows at the bottom for materials that are missing."),
-             ("Test catalog", "Time each general test once (LOD, KF, pH, IR, titration ...).", "No - a missing general test goes on 'Extra tests'."),
+             ("Test catalog", "Time each general test once (LOD, KF, pH, IR, titration ...).",
+              "Only to give one test its own time (see 'One test needs its own time' above); do not sort or delete rows."),
              ("Test times", "One row per material x compendial test: confirm Applicable; time the HPLC/GC tests.",
               "No - set Applicable = N instead of deleting; missing tests go on 'Extra tests'. Sorting and filtering are fine."),
              ("Extra tests", "Tests you run that are missing from Test times (in-house tests, residual solvents, ICP ...).",

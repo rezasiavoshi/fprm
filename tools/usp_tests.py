@@ -139,7 +139,13 @@ def classify(major, name, text):
     else:
         tech = ""
     code = None
-    if "565" in chs or "561" in chs:
+    if re.search(r"asbestos", name.lower()):   # microscopy / XRD, not an IR identification
+        return None, "Other / bench", appl, note
+    if re.search(r"aflatoxin", name.lower()):
+        return None, "HPLC", appl, note
+    if re.search(r"water determination", name.lower()):   # before <565>/<611> mentions send it to GC
+        code = "KF" if re.search(r"method i\b|method ia|method ic|titrimetric", low) else "LOD"
+    if code is None and ("565" in chs or "561" in chs):
         code = "PEST" if "pesticide" in low else ("RS_GC" if "solvent" in low else ("ASH" if "ash" in low else None))
     if code is None and tech == "GC" and re.search(r"residual solvent|〈467〉", low):
         code = "RS_GC"
@@ -152,6 +158,8 @@ def classify(major, name, text):
                 break
     if code == "LIMIT" and tech == "AAS":
         code = "AAS"
+    if code == "LOI" and major == "ASSAY":   # e.g. ferric oxide: ignite, then titrate
+        code = "TITR"
     if code == "GC":
         return None, "GC", appl, note
     if code is None:
@@ -187,6 +195,8 @@ def classify(major, name, text):
             code = "LIMIT"
     if code == "ID_IR" and major != "IDENTIFICATION":
         code = "UV" if "ultraviolet" in low else code
+    if code == "LIMIT" and re.search(r"arsenic|\blead\b|mercury|heavy metals", name.lower()):
+        code = "LIM_TOX"
     return code, B.USP_CATALOG[code][1], appl, note
 
 
@@ -200,7 +210,13 @@ def display_name(major, name, code, tech):
         name = "Assay"
     elif major == "ASSAY" and code in ("", None, "TITR", "UV", "AAS") and not name.lower().startswith(("assay", "content")):
         name = "Assay - " + name
-    return f"{name} ({tech})" if not code else name
+    return f"{name} ({tech})" if not code and tech != "Other / bench" else name
+
+
+# One monograph test that is really two separate tests -> one row each, so each can be timed on its own.
+SPLIT = {"Chloride and Sulfate": ["Chloride", "Sulfate"], "Thiosulfate and Barium": ["Thiosulfate", "Barium"],
+         "Limit of Cadmium (Cd) and Chromium (Cr)": ["Limit of Cadmium (Cd)", "Limit of Chromium (Cr)"],
+         "Limit of Mercury (Hg) and Nickel (Ni)": ["Limit of Mercury (Hg)", "Limit of Nickel (Ni)"]}
 
 
 def extract(db, titles):
@@ -233,15 +249,16 @@ def extract(db, titles):
             if appl == "drop":
                 continue
             tech = assay if tech == "CHROM" else tech
-            name = display_name(t["major"], name, code, tech)
-            key = (code, name.split(",")[0]) if code else name
-            if key in seen:
-                continue
-            seen.add(key)
-            name = name.split(",")[0] if code == "LIMIT" else name
             ch = ",".join(dict.fromkeys(re.findall(r"〈(\d+)[A-Z]?〉", t["text"][:400])))
-            lst.append(dict(section=t["major"].title(), test=name, chapter=ch, code=code or "", technique=tech,
-                            applicable=appl, note=note))
+            name = display_name(t["major"], name, code, tech)
+            for name in SPLIT.get(name, [name]):
+                key = (code, name.split(",")[0]) if code else name
+                if key in seen:
+                    continue
+                seen.add(key)
+                name = name.split(",")[0] if code in ("LIMIT", "LIM_TOX") else name
+                lst.append(dict(section=t["major"].title(), test=name, chapter=ch, code=code or "", technique=tech,
+                                applicable=appl, note=note))
         if sum(x["section"] == "Assay" for x in lst) > 1:
             for x in lst:
                 if x["section"] == "Assay":

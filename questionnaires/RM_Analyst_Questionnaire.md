@@ -24,7 +24,7 @@ Your answers give the time each test takes and how many samples arrive, which sh
 ## Pre-filled data
 
 - 180 materials on the master list (94 Active, 13 Colorant, 10 Flavour, 9 Filler / Diluent, others); 129 have a USP–NF monograph.
-- *Test times* lists each monograph test as its own row (1179 rows). General tests link to the *Test catalog* (29 tests), so they are timed once; HPLC/GC tests are timed per material.
+- *Test times* lists each monograph test as its own row (1193 rows). General tests link to the *Test catalog* (30 tests), so they are timed once; HPLC/GC tests are timed per material.
 - Left out: microbial, sterility and endotoxin tests (Micro lab). Pre-set to N: tests that apply only to some grades (e.g. *where labelled for injectables*). Where a monograph gives alternative assays, keep only the one you run.
 - *Materials*: the master list, then 59 purchase-list names with a suggested match to confirm, then 586 names found only in the purchase list or the lab time records.
 - Recorded lab times are per test set and include unattended time; they are shown in hours as a starting point. Two columns on *Materials* flag tests in the monograph but not in the lab record, and the reverse; differences are expected where a material is tested to BP/EP or a supplier spec - then fix *Test times* to what you run.
