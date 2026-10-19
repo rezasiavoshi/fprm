@@ -14,6 +14,7 @@ import re, sys, os, csv, collections, difflib, openpyxl
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.worksheet.datavalidation import DataValidation
+from openpyxl.formatting.rule import FormulaRule
 from openpyxl.utils import get_column_letter
 
 ROOT = sys.argv[1] if len(sys.argv) > 1 else "."
@@ -354,6 +355,14 @@ def tt_auto(ws, first, last):
         ws.cell(r, 16, f'=IF(N{r}="","",IF(OR(M{r}="",O{r}=""),N{r},(M{r}+4*N{r}+O{r})/6))').number_format = "0.00"
         ws.cell(r, 22).number_format = "0%"
     ws.column_dimensions["E"].hidden = True   # only used to match answers back to the study
+    grey_out(ws, '$F2="N"', '$AA2="Y"')
+
+
+def grey_out(ws, *conds):
+    """Dark-grey the whole row when any condition (written for row 2) holds, e.g. Applicable = N."""
+    rule = FormulaRule(formula=[f"OR({','.join(conds)})"], stopIfTrue=False,
+                       fill=PatternFill("solid", fgColor="BFBFBF", bgColor="BFBFBF"), font=Font(color="7F7F7F"))
+    ws.conditional_formatting.add(f"A2:{get_column_letter(ws.max_column)}{ws.max_row + 200}", rule)
 
 
 def extra_tests_sheet(wb, s, kind, key_list=None):
@@ -458,7 +467,8 @@ DESC = {
 }
 
 GENERAL_RULES = [
-    ("Colours", "Yellow = you type. Grey = pre-filled or automatic; type over a grey value only if it is wrong."),
+    ("Colours", "Yellow = you type. Grey = pre-filled or automatic; type over a grey value only if it is wrong. "
+     "Dark-grey row = Applicable = N or Outsourced = Y (outsourced rows still take the in-house Prep time)."),
     ("Units", "Times in HOURS (0.25 = 15 min) per sample unless the header says per sequence."),
     ("Minimum effort", "Only 'Prep – MOST LIKELY' is required; MIN and MAX are optional. Blank = not known."),
     ("Hands-on vs instrument", "Analyst columns = hands-on time only. Unattended time goes in 'Instrument run'."),
@@ -741,6 +751,7 @@ def build_rm(s, lead, raw, dbmap):
                 + [None] * 11 for i, (code, (name, instr, lab)) in enumerate(USP_CATALOG.items(), 2)]
     table(ws, 1, CAT_H, cat_rows, set(range(6, 17)), [9, 44, 13, 8, 18, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 30],
           {"O": '"Y,N"'})
+    grey_out(ws, '$O2="Y"')
 
     # ---- Test times
     ws = wb.create_sheet("Test times")
