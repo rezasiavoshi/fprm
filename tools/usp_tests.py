@@ -1,4 +1,5 @@
-"""Flatten each RM master-list material into its USP-NF compendial tests -> data/usp_tests.csv.
+"""Flatten each RM master-list material into its USP-NF compendial tests -> data/usp_tests.csv,
+and its microbiological tests (Micro lab questionnaire) -> data/usp_micro.csv.
 
 Reads the usp48 index read-only (section headings + chapter numbers; section text is only scanned by
 regex for the technique, never printed). Materials without a monograph get no rows here; the
@@ -11,6 +12,7 @@ import build_analyst_questionnaires as B
 
 USP48 = os.path.expanduser(sys.argv[sys.argv.index("--usp48") + 1] if "--usp48" in sys.argv else "~/usp48")
 OUT = os.path.join("data", "usp_tests.csv")
+OUT_MICRO = os.path.join("data", "usp_micro.csv")
 
 # Master-list material -> monograph title, where spelling/purchase matching fails or picks wrongly.
 # Herbal dry extracts are mapped to the closest DS extract monograph; the extract ratio is not checked.
@@ -267,6 +269,55 @@ def extract(db, titles):
     return out
 
 
+# Micro test codes (Micro lab questionnaire catalog) found in a monograph's microbial sections.
+MICRO_ORGANISMS = [("ECOLI", r"escherichia coli|\be\. coli"), ("SALM", r"salmonella"), ("PSAE", r"pseudomonas aeruginosa"),
+                   ("SAUR", r"staphylococcus aureus"), ("BTGN", r"bile-tolerant"), ("CALB", r"candida albicans")]
+ONLY_SOME = r"where (it is labeled|the label states)|if (intended|labeled) for|intended for use in the (manufacture|preparation)|parenteral|large-volume"
+
+
+def extract_micro(db, titles):
+    """monograph title -> {code: (chapters, applicable, note)} for microbial enumeration, each specified organism,
+    endotoxins and sterility. Section text is only scanned by regex."""
+    q = ",".join("?" * len(titles))
+    rows = db.execute(f"select m.title, s.major, s.minor, s.text from sections s join monographs m on m.id=s.monograph_id "
+                      f"where m.category in ('USP','NF','DS') and m.title in ({q}) order by m.title, s.ord", titles).fetchall()
+    secs = collections.defaultdict(list)
+    for title, major, minor, text in rows:   # same bullet/continuation grouping as extract()
+        if major in SKIP_MAJOR:
+            continue
+        text = re.sub(r"\s+", " ", text or "").strip()
+        if not text.startswith("•"):
+            if secs[title]:
+                secs[title][-1][1] += " " + text
+            continue
+        secs[title].append([minor or "", text])
+    out = {}
+    for title, ts in secs.items():
+        found = collections.OrderedDict()
+        for minor, text in ts:
+            chs = re.findall(r"〈(\d+)[A-Z]?〉", text[:400])
+            low = (minor + " " + text).lower()
+            if not (set(chs) & MICRO or re.search(r"microbial|sterility|endotoxin|specified microorganisms", minor.lower())):
+                continue
+            only_some = re.search(ONLY_SOME, low[:600])
+            ch = ",".join(c for c in dict.fromkeys(chs) if c in MICRO)
+            codes = []
+            if "85" in chs or "endotoxin" in low[:200]:
+                codes.append("BET")
+            elif "71" in chs or "sterility" in low[:200]:
+                codes.append("STER")
+            else:
+                if set(chs) & {"61", "2021"} or re.search(r"enumeration|total aerobic", low):
+                    codes.append("ENUM")
+                codes += [c for c, rx in MICRO_ORGANISMS if re.search(rx, low)]
+            for c in codes:   # 'only for sterile / parenteral grades' qualifies endotoxins and sterility only
+                appl, note = ("N", "Only for some grades/labels (sterile / parenteral)") if only_some and c in ("BET", "STER") else ("Y", "")
+                found.setdefault(c, (ch, appl, note))
+        if found:
+            out[title] = found
+    return out
+
+
 def main():
     s = B.load_study()
     mats = [(r[0], r[1]) for r in s["rm"]]
@@ -287,6 +338,15 @@ def main():
     print(f"{OUT}: {n} rows; materials mapped {sum(v for k, v in by.items() if k != 'none')}/{len(mats)} {dict(by)}")
     flat = [x for t in tests.values() for x in t]
     print("by code:", dict(collections.Counter(x["code"] or x["technique"] for x in flat).most_common()))
+    micro = extract_micro(db, sorted({t for t, _ in mp.values() if t}))
+    with open(OUT_MICRO, "w", newline="", encoding="utf-8") as f:
+        w = csv.writer(f)
+        w.writerow(["material", "category", "monograph", "code", "chapter", "applicable", "note"])
+        for m, cat in mats:
+            for code, (ch, appl, note) in micro.get(mp[m][0], {}).items():
+                w.writerow([m, cat, mp[m][0], code, ch, appl, note])
+    print(f"{OUT_MICRO}: {sum(1 for m, _ in mats if mp[m][0] in micro)} materials with micro tests;",
+          dict(collections.Counter(c for m, _ in mats for c in micro.get(mp[m][0], {})).most_common()))
 
 
 if __name__ == "__main__":

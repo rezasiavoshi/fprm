@@ -1,10 +1,12 @@
-"""Build the Raw-Material (RM) and Finished-Product (FP) analyst questionnaires (.xlsx + .md).
+"""Build the analyst questionnaires (.xlsx + .md): Chemical lab Raw-Material (RM) and Finished-Product (FP),
+Physical lab (finished-product physical tests and IPC checks) and Micro lab (raw materials, products, monitoring).
 
 Pre-fills each questionnaire from:
   data/QC_Capacity_Study.xlsx  - item lists, tests and column layout (answers paste back 1:1)
   data/Leadtime.xlsx           - recorded RM test times (minutes), used as hints to confirm
   data/rawmaterials.md         - raw-material names as purchased (usp48 export), checked against the study list
   data/usp_tests.csv           - RM compendial tests per material, flattened from USP-NF (tools/usp_tests.py)
+  data/usp_micro.csv           - RM microbiological tests per material from USP-NF (tools/usp_tests.py)
   data/Product-Material-Database.xlsx - 'Name Mapping' sheet, source spelling -> study material name
 The questionnaires are self-contained: respondent-facing text never names these files or their sheets,
 so a respondent needs only the questionnaire. Column order still matches the study for paste-back.
@@ -23,6 +25,7 @@ LEAD = os.path.join(ROOT, "data/Leadtime.xlsx")
 RAW = os.path.join(ROOT, "data/rawmaterials.md")
 DB = os.path.join(ROOT, "data/Product-Material-Database.xlsx")
 USP_TESTS = os.path.join(ROOT, "data/usp_tests.csv")   # tools/usp_tests.py
+USP_MICRO = os.path.join(ROOT, "data/usp_micro.csv")   # tools/usp_tests.py
 OUT = os.path.join(ROOT, "questionnaires")
 
 # Study material name -> Leadtime.xlsx name(s). Curated: automatic fuzzy matching gave false pairs
@@ -366,10 +369,12 @@ def grey_out(ws, *conds):
     ws.conditional_formatting.add(f"A2:{get_column_letter(ws.max_column)}{ws.max_row + 200}", rule)
 
 
-def extra_tests_sheet(wb, s, kind, key_list=None):
+def extra_tests_sheet(wb, s, kind, key_list=None, types=None, dv=None):
+    """types: dropdown list for an editable Type column (default: Type fixed to kind)."""
     ws = wb.create_sheet("Extra tests")
-    table(ws, 1, s["tt_h"] + [OUTSOURCED], [[None, kind] + [None] * 25 for _ in range(40)], set(range(1, 28)) - {2, 5, 16},
-          TT_WIDTHS, dict(TT_DV, **({"A": key_list} if key_list else {})))
+    table(ws, 1, s["tt_h"] + [OUTSOURCED], [[None, kind] + [None] * 25 for _ in range(40)],
+          set(range(1, 28)) - {5, 16} - (set() if types else {2}),
+          TT_WIDTHS, dict(dv or TT_DV, **({"A": key_list} if key_list else {}), **({"B": types} if types else {})))
     tt_auto(ws, 2, 41)
     return ws
 
@@ -395,7 +400,7 @@ def overview(wb, name, area, scope_lines, sheets, stats):
 DESC = {
     "#": "Question number.", "Question": "The question.", "Answer": "Your answer - short is fine.",
     "Key (Family ID / Material)": "The item tested: material name (raw materials) or method family ID (finished products).",
-    "Type": "RM = raw material, FP = finished product.",
+    "Type": "RM = raw material, FP = finished product (Extra tests may also use PM = packaging, IPC, Water, EM, Other).",
     "Description": "Material category, or the products in the family.",
     "Test": "Test name.",
     "Lookup key (auto)": "Hidden, automatic: Key | Test joined, used to match your answers back to the study. Do not type.",
@@ -427,7 +432,7 @@ DESC = {
     "Recorded test list": "Reference: tests listed in the lab's past records.",
     # Test catalog
     "Code": "Short code of the general test; Test times rows find their times by this code.",
-    "Rows using it (auto)": "Automatic: number of Test times rows that use this test and are Applicable = Y.",
+    "Rows using it (auto)": "Automatic: number of Test times rows (and Monitoring rows) that use this test and are Applicable = Y.",
     "Lab catalog time (min)": "Reference: minutes in the lab's existing test catalog.",
     "Samples per sequence / run": "Typical number of samples run together.",
     "Notes": "Anything unusual.",
@@ -465,6 +470,39 @@ DESC = {
     "Active ingredient": "Active shared by several families.", "# families": "Number of families using it.",
     "Families": "Family IDs.", "Same column + mobile phase? (Y/N/partly)": "Can they run in one HPLC sequence?",
     "Group code": "Code to put in Test times column J (Campaign group code).",
+    # Physical lab
+    "IPC checks per batch (Physical lab)": "In-process checks per batch done by the Physical lab at the machine (0 = production does them all).",
+    "Units tested per IPC check": "Tablets / capsules / sachets tested in one in-process check.",
+    # Micro lab
+    "Item (material / family)": "Raw-material name or finished-product family ID.",
+    "Lots / batches tested for micro (%)": "Share of lots or batches tested for micro; blank = every one (20 = one in five).",
+    "Equipment": "Main equipment the test occupies.",
+    "Compendial conditions (reference)": "Reference: typical media and incubation from USP; your procedure may differ.",
+    "Setup analyst h / session": "Hands-on hours per session not spent on single samples (media out, controls, cabinet cleaning).",
+    "Prep + inoculation h/sample – MIN": "Optional. Fastest realistic hands-on time per sample (weighing, dilution, filtration, plating).",
+    "Prep + inoculation – MOST LIKELY": "Required. Usual hands-on time per sample to prepare and inoculate.",
+    "Prep + inoculation – MAX": "Optional. Slowest realistic preparation per sample.",
+    "Reading + counting h / sample (all reads)": "Required. Hands-on time to read, count and subculture one sample, all reads together.",
+    "Incubation days": "Days the plates / tubes stay in the incubator (not analyst time).",
+    "Plates / tubes per sample": "Plates, tubes or bottles one sample puts in the incubators.",
+    "BSC / LAF h / sample": "Biosafety cabinet / laminar-flow hood time per sample.",
+    "Data + doc h / sample": "Calculations, logbook and LIMS entries per sample.",
+    "Samples per session": "Typical number of samples handled in one session.",
+    "Basis (USP-NF)": "Why the test is listed: monograph chapter, natural origin or USP <1111> for the dosage form.",
+    "Programme": "Water, Environment, Personnel, Utilities, Cleaning validation ...",
+    "Area / system / point group": "Area, water system or group of points with the same sampling plan.",
+    "Grade / class": "Cleanroom grade or area class, if any.",
+    "Points (number)": "Number of sampling points (or plates per round) in this group.",
+    "Samples per point per week": "How often each point is sampled per week (daily on 5 days = 5; monthly = 0.25).",
+    "Weeks per year (blank = 50)": "Weeks per year the plan runs; blank = 50.",
+    "Samples / yr (auto)": "Automatic: Points x Samples per point per week x Weeks per year.",
+    "Sampling round analyst h (walk + sampling)": "Hands-on hours for one sampling round, including walking and gowning.",
+    "Rounds per week": "Sampling rounds per week for this group.",
+    "Weekend / holiday sampling (Y/N)": "Y if samples are also taken at weekends or on holidays.",
+    "Who samples (QC micro / production / engineering)": "Who takes the samples.",
+    "Activity": "Support task.", "Unit": "What one unit is (batch, load, week ...).", "Units / yr": "Units per year.",
+    "Analyst h / unit": "Hands-on hours per unit.", "Equipment occupied": "Equipment used (autoclave, incubator ...).",
+    "Equipment h / unit": "Hours the equipment is occupied per unit.", "Done by (QC micro / other)": "Who does it.",
 }
 
 GENERAL_RULES = [
@@ -486,7 +524,7 @@ GENERAL_RULES = [
 ]
 
 
-def guide(ws, wb, sheets, rules):
+def guide(ws, wb, sheets, rules, general=None):
     """sheets: [(sheet, use, may add rows)]. Then the meaning of every column of each table sheet (row 1 headers)."""
     ws.column_dimensions["A"].width = 38
     ws.column_dimensions["B"].width = 110
@@ -510,7 +548,7 @@ def guide(ws, wb, sheets, rules):
         r += 1
 
     head("How to fill", "")
-    for a, b in GENERAL_RULES + rules:
+    for a, b in (GENERAL_RULES if general is None else general) + rules:
         line(a, b)
     r += 1
     head("Sheet", "Use  ·  Can I add rows?")
@@ -558,7 +596,8 @@ FP_QUESTIONS = [RESPONDENT,
     ("B. Batches and stability", [
         ("B1", "How many release batches does each family produce per year now, and per the production plan in 2-3 years? (enter on 'Volumes')", "Products F, I"),
         ("B2", "Stability: which conditions and time points are on the protocol (e.g. 0/3/6/9/12/18/24/36 months, 25/60 and 40/75)? How many stability samples tested per year?", "Products G, J"),
-        ("B3", "Are in-process controls (blend uniformity, core weight, hardness, LOD) done by QC or by production? Samples per batch and hours?", "Extra tests"),
+        ("B3", "Are in-process chemical tests (blend uniformity, LOD / water of granules) done by QC or by production? Samples per batch and hours? "
+               "(Weight, hardness and thickness checks are on the Physical lab questionnaire.)", "Extra tests"),
         ("B4", "How many process/cleaning validation and swab samples per year? Analyst and HPLC hours each?", "Capacity C"),
     ]),
     ("C. Methods and instruments", [
@@ -630,15 +669,16 @@ def usp_groups(tests):
     return g
 
 
-def cat_rules(one, own, item, differs):
-    """Guide rules for a Test catalog. own = (example test, its minutes, catalog code, rest minutes, new code)."""
+def cat_rules(one, own, item, differs, filt=None):
+    """Guide rules for a Test catalog. own = (example test, its minutes, catalog code, rest minutes, new code);
+    filt = how to find its Test times rows (default: filter on the test name)."""
     test, mins, code, rest, new = own
     return [
         ("Catalog time", f"One catalog row = the time of ONE test on ONE sample (e.g. {one}). Every Test times row "
          "with that Catalog code gets it, so each row is counted once."),
         ("One test needs its own time", f"e.g. {test} {mins} min while the rest of {code} stays {rest}: on Test catalog copy the "
          f"{code} row into a new row (Insert Copied Cells), give it a new Code (e.g. {new}) and its own times; on Test times "
-         f"filter Test = {test} and change Catalog code to {new}. Those rows then follow the new row."),
+         f"{filt or 'filter Test = ' + test} and change Catalog code to {new}. Those rows then follow the new row."),
         (f"One {item} differs", f"Type over that row's grey cells on Test times (e.g. {differs}). "
          "That cell then stops following the catalog."),
         ("Missing / unused tests", "Unused test: Applicable = N (do not delete the row). Missing test: add it on 'Extra tests'."),
@@ -670,12 +710,12 @@ def catalog_sheet(wb, rows):
     return ws
 
 
-def link_catalog(ws, codes):
-    """Test times rows with a Catalog code (AB) look their times up by code, so sorting either sheet keeps them right."""
+def link_catalog(ws, codes, links=CAT_LINK, key="AB"):
+    """Test times rows with a Catalog code (column key) look their times up by code, so sorting either sheet keeps them right."""
     for i, code in enumerate(codes, 2):
         if code:
-            for col, ccol in CAT_LINK.items():
-                v = f"INDEX('Test catalog'!${ccol}$2:${ccol}${CAT_LAST},MATCH($AB{i},'Test catalog'!$A$2:$A${CAT_LAST},0))"
+            for col, ccol in links.items():
+                v = f"INDEX('Test catalog'!${ccol}$2:${ccol}${CAT_LAST},MATCH(${key}{i},'Test catalog'!$A$2:$A${CAT_LAST},0))"
                 ws.cell(i, col, f'=IFERROR(IF({v}="","",{v}),"")').fill = AUTO
 
 
@@ -816,35 +856,35 @@ FP_SHEETS = [("Overview", "Scope; your name and date.", "No."),
              ("Questions", "Respondent profile, batches & stability, methods, workload.", "No."),
              ("Volumes", "Release batches and stability samples per year for each product.",
               "Yes - 10 empty rows at the bottom for new products."),
-             ("Test catalog", "Time each general test once (appearance, weight, hardness, friability, disintegration, water ...).",
+             ("Test catalog", "Time each general test once (appearance, water content, pH).",
               "Only to give one test its own time (see 'One test needs its own time' above); do not sort or delete rows."),
              ("Test times", "One row per family x test: confirm Applicable; time the HPLC tests (grey rows come from the catalog).",
               "No - set Applicable = N instead of deleting; missing tests go on 'Extra tests'. Sorting and filtering are fine."),
              ("Campaign groups", "Families sharing an active ingredient - can they share an HPLC sequence?", "Yes, at the bottom."),
-             ("Extra tests", "Tests missing from the list (IPC, blend uniformity, water content, preservative assay ...).",
+             ("Extra tests", "Tests missing from the list (blend uniformity, preservative assay, delivered-dose assay ...).",
               "Yes - 40 empty rows.")]
 # General finished-product tests, timed once on 'Test catalog'. code -> (name, instrument, applies to stability)
+# Weight, dimensions, hardness, brittleness, friability, disintegration, fill volume and IPC checks are done by the
+# Physical lab: they are on the Physical lab questionnaire (PHYS_CATALOG), not here.
 FP_CATALOG = collections.OrderedDict([
     ("APPEAR", ("Appearance / description", "Other / bench", "Y")),
-    ("AVG_WT", ("Average weight / uniformity of mass", "Other / bench", "N")),
-    ("HARD", ("Hardness (with thickness / diameter)", "Other / bench", "Y")),
-    ("FRIAB", ("Friability", "Other / bench", "N")),
-    ("DISINT", ("Disintegration", "Other / bench", "Y")),
     ("WATER", ("Water content - KF (or LOD if that is what you run)", "KF titrator", "Y")),
     ("PH", ("pH", "Other / bench", "Y")),
-    ("FILL", ("Fill volume / deliverable volume", "Other / bench", "N")),
 ])
 # Dosage form -> general tests. Replaces the study's single 'Other tests (non-HPLC ...)' row per family.
-FP_FORM_TESTS = {"Tablet": ["APPEAR", "AVG_WT", "HARD", "FRIAB", "DISINT", "WATER"],
-                 "Capsule": ["APPEAR", "AVG_WT", "DISINT", "WATER"],
-                 "Sachet": ["APPEAR", "AVG_WT", "WATER"],
-                 "Nasal spray": ["APPEAR", "PH", "FILL"]}
+FP_FORM_TESTS = {"Tablet": ["APPEAR", "WATER"],
+                 "Capsule": ["APPEAR", "WATER"],
+                 "Sachet": ["APPEAR", "WATER"],
+                 "Nasal spray": ["APPEAR", "PH"]}
 
 FP_RULES = [
     ("Fill order", "1) Test catalog - each general test is timed once and copied to every family that uses it. "
      "2) Test times - filter Instrument = HPLC: those rows need their own times per family. 3) Volumes, then Questions."),
-] + cat_rules("one friability test", ("Disintegration", 40, "DISINT", 20, "DIS_FC"), "family",
-              "disintegration of a film-coated tablet that takes much longer") + [
+] + cat_rules("one KF water determination", ("Water content of sachets", 45, "WATER", 20, "WAT_SA"), "family",
+              "the water content of an effervescent product that takes much longer",
+              "filter Description for the sachet families") + [
+    ("Physical tests", "Average weight, diameter, thickness, hardness, brittleness, friability, disintegration, fill volume "
+     "and in-process checks are done by the Physical lab - they are on the Physical lab questionnaire, not here."),
     ("Micro tests", "Microbial tests are done by the Micro lab - not part of this questionnaire."),
     ("Families", "A family = all strengths tested with the same methods. If one strength needs a different method, say so in Notes."),
     ("Campaign groups", "Families sharing an active: if they use the same column and mobile phase, give them one group "
@@ -887,7 +927,7 @@ def build_fp(s):
             fp_rows.append(row)
             codes.append(code)
     stats = [f"{len(s['fp'])} products in {len(fams)} method families and {len(fp_rows)} family x test rows.",
-             f"{len(FP_CATALOG)} general tests (appearance, weight, hardness, disintegration, water ...) are timed once on "
+             f"{len(FP_CATALOG)} general tests (appearance, water content, pH) are timed once on "
              "'Test catalog' and linked to the family rows by dosage form.",
              f"{len(camp)} active ingredients appear in more than one family - candidates for shared HPLC sequences ('Campaign groups').",
              f"{len(no_active)} families have no active ingredient in the product formulas ({', '.join(no_active)}) - name the actives in Test times Notes.",
@@ -929,6 +969,399 @@ def build_fp(s):
                     forms=collections.Counter(r[3] or "not stated" for r in s["fp"]))
 
 
+# ---------------------------------------------------------------- Physical lab
+# Physical tests on finished products, timed once on 'Test catalog'. code -> (name, instrument, applies to stability)
+PHYS_CATALOG = collections.OrderedDict([
+    ("AVG_WT", ("Average weight / uniformity of mass", "Balance", "N")),
+    ("DIAM", ("Diameter (or length / width)", "Tablet tester", "N")),
+    ("THICK", ("Thickness", "Tablet tester", "N")),
+    ("HARD", ("Hardness / breaking force", "Tablet tester", "Y")),
+    ("BRITTLE", ("Brittleness", "Other / bench", "N")),
+    ("FRIAB", ("Friability", "Friabilator", "N")),
+    ("DISINT", ("Disintegration", "Disintegration tester", "Y")),
+    ("IPC", ("In-process check at the machine (one check, all its tests)", "Tablet tester", "N")),
+    ("FILL", ("Fill volume / deliverable volume", "Balance", "N")),
+    ("SPRAY", ("Spray weight per actuation (shot weight)", "Balance", "Y")),
+])
+PHYS_FORM_TESTS = {"Tablet": ["AVG_WT", "DIAM", "THICK", "HARD", "BRITTLE", "FRIAB", "DISINT", "IPC"],
+                   "Capsule": ["AVG_WT", "DISINT", "IPC"],
+                   "Sachet": ["AVG_WT", "IPC"],
+                   "Nasal spray": ["FILL", "SPRAY"]}
+PHYS_INSTR = '"Balance,Tablet tester,Caliper / micrometer,Friabilator,Disintegration tester,Dissolution bath,' \
+             'Moisture analyser,Sieve shaker,Density tester,Leak tester,Other / bench,None"'
+PHYS_DV = dict(TT_DV, G=PHYS_INSTR)
+
+PHYS_SHEETS = [("Overview", "Scope; your name and date.", "No."),
+               ("Guide", "Rules, and what each column means.", "No."),
+               ("Questions", "Respondent profile, samples & IPC, methods, workload.", "No."),
+               ("Volumes", "In-process checks per batch for each product (and release / stability numbers if you know them).",
+                "Yes - 10 empty rows at the bottom for new products."),
+               ("Test catalog", "Time each physical test once (weight, diameter, thickness, hardness, brittleness, friability, disintegration ...).",
+                "Only to give one test its own time (see 'One test needs its own time' above); do not sort or delete rows."),
+               ("Test times", "One row per family x physical test: confirm Applicable (grey rows come from the catalog).",
+                "No - set Applicable = N instead of deleting; missing tests go on 'Extra tests'. Sorting and filtering are fine."),
+               ("Extra tests", "Tests missing from the list: raw-material (particle size, bulk / tapped density), packaging "
+                "(dimensions, leak test), dissolution bath work ...", "Yes - 40 empty rows; choose the Type (FP, RM, PM, IPC).")]
+
+PHYS_QUESTIONS = [("A. Respondent", [RESPONDENT[1][0],
+        ("A2", "Which instruments are you qualified on (balance, tablet tester, friabilator, disintegration tester, dissolution bath, "
+               "moisture analyser, sieve shaker, density tester, leak tester)?", "Personnel C; Test_Times X")]
+        + RESPONDENT[1][2:]),
+    ("B. Samples and in-process checks", [
+        ("B1", "Who does the in-process checks during compression / encapsulation / filling: the Physical lab, production operators, or both? "
+               "How many checks per batch and how many units per check? (enter on 'Volumes')", "Volumes"),
+        ("B2", "Do you walk to the production line for in-process checks, or are samples brought to the lab? Minutes per round trip?", "Test catalog IPC"),
+        ("B3", "Stability: which physical tests are run at stability pulls (hardness, disintegration, ...)? How many stability samples per year?", "Test_Times W"),
+        ("B4", "Who checks appearance / description of finished products and raw materials: the Physical or the Chemical lab?", "Report: test split"),
+        ("B5", "Does the Physical lab test raw materials (particle size, bulk / tapped density, sieve analysis, flow) or packaging materials "
+               "(dimensions, foil thickness, leak test)? Which tests, and how many samples per year? (add them on 'Extra tests')", "Extra tests"),
+    ]),
+    ("C. Methods and instruments", [
+        ("C1", "Are weight, thickness, diameter and hardness measured on one automatic tablet tester in one run, or one by one "
+               "(balance, caliper, hardness tester)?", "Test catalog"),
+        ("C2", "Brittleness: how is it measured, on which instrument, and how is it different from hardness and friability?", "Test catalog BRITTLE"),
+        ("C3", "Disintegration: how many baskets / stations? How long for uncoated, film-coated and enteric-coated tablets? How many runs at once?", "Test catalog DISINT"),
+        ("C4", "Dissolution: does the Physical lab run the bath and take the samples (with UV / HPLC finish in the Chemical lab)? If yes, add it on 'Extra tests'.", "Extra tests"),
+        ("C5", "How many days per month is each instrument down (breakdown, calibration, waiting for repair)?", "Settings downtime"),
+        ("C6", "Which instrument do you wait for most? How often per week and for how long?", "Evidence; Notes"),
+    ]),
+    ("D. Workload and service level", [
+        ("D1", "Target time for an in-process result (minutes) and for release results (days); actual typical times. Has production waited for you?", "Evidence E, F, G"),
+        ("D2", "How many samples are typically waiting at month end? Which months are busiest (production campaigns)?", "Evidence B, D"),
+        ("D3", "Non-routine work - number per year and hours each: (a) instrument calibration / mechanical checks (disintegration tester, friabilator, "
+               "hardness tester, dissolution bath, daily balance checks); (b) process validation batches with extra sampling; (c) OOS investigations; "
+               "(d) complaint samples; (e) R&D or trial batches.", "Capacity C"),
+        ("D4", "Which new products in the next 2-3 years need new physical tests (chewable, orodispersible, effervescent, coated, modified release)?", "Products; Settings growth"),
+    ]),
+    ("E. Closing", [
+        ("E1", "If you had one more analyst or one more instrument, what would change first?", "Report_Outline"),
+        ("E2", "What is the biggest risk to on-time in-process and release results today?", "Report_Outline"),
+    ]),
+]
+
+PHYS_GENERAL = [r for r in GENERAL_RULES if r[0] not in ("Hands-on vs instrument", "Shared sample solution", "Shared sequence")] + [
+    ("Hands-on vs instrument", "Analyst columns = hands-on time only. Unattended time (disintegration run, friabilator drum, "
+     "dissolution bath) goes in 'Instrument run'.")]
+PHYS_RULES = [
+    ("Fill order", "1) Test catalog - each physical test is timed once and copied to every family that uses it. "
+     "2) Test times - confirm Applicable per family; type over a grey value only where one family differs. "
+     "3) Volumes (in-process checks), then Questions."),
+] + cat_rules("one friability test", ("Disintegration of film-coated tablets", 40, "DISINT", 20, "DIS_FC"), "family",
+              "disintegration of an enteric-coated tablet that takes much longer",
+              "filter Test = Disintegration, pick the film-coated families") + [
+    ("Measured together", "If one tablet tester measures weight, thickness, diameter and hardness in one run, put the whole run on HARD "
+     "and enter 0 on DIAM and THICK (and AVG_WT if it is part of the run), with 'measured with HARD' in Notes. Each minute is then counted once."),
+    ("In-process checks", "The IPC row is ONE check at the machine: all tests in it, plus walking to the line. "
+     "Checks per batch go on 'Volumes'."),
+    ("Other labs", "Assay, dissolution finish (HPLC / UV), water content and pH are on the Chemical lab questionnaires; "
+     "microbial tests on the Micro lab questionnaire. If the Physical lab runs the dissolution bath, add it on 'Extra tests'."),
+    ("Volumes", "Release batches and stability samples are also asked on the FP questionnaire: fill them only if you know them. "
+     "The in-process columns are what this sheet needs most."),
+    ("Families", "A family = all strengths tested with the same methods. If one strength needs a different method, say so in Notes."),
+]
+
+
+def build_phys(s):
+    wb = Workbook()
+    fams, _, _ = campaign_candidates(s["fp"])
+    rows, codes = [], []
+    for r in tt_rows([r for r in s["tt"] if r[1] == "FP" and r[3].startswith("Other tests")]):
+        forms = fams[r[0]]["form"] if r[0] in fams else set()
+        for code in dict.fromkeys(c for f in sorted(forms) for c in PHYS_FORM_TESTS.get(f, ["AVG_WT"])):
+            name, instr, stab = PHYS_CATALOG[code]
+            row = list(r)
+            row[3], row[5], row[6], row[7], row[8], row[22] = name, "Y", instr, "Low", 1, stab
+            rows.append(row)
+            codes.append(code)
+    forms = collections.Counter(r[3] or "not stated" for r in s["fp"])
+    stats = [f"{len(s['fp'])} products in {len(fams)} method families; dosage forms: "
+             + ", ".join(f"{c} {n}" for n, c in forms.most_common()) + ".",
+             f"{len(rows)} family x test rows; the {len(PHYS_CATALOG)} physical tests are timed once on 'Test catalog' and linked by dosage form.",
+             "No recorded physical test times exist yet, so all times are new estimates."]
+    overview(wb, "Physical Lab Analyst Questionnaire", "QC Physical Laboratory - finished products (release, stability, in-process checks), "
+             "plus any raw-material and packaging physical tests",
+             [("Who fills it", "Each analyst who runs physical tests (2-3 people). Each person fills a separate copy."),
+              ("Time needed", "About 1.5 hours: questions 20 min, test catalog 30 min, the rest on the tables.")],
+             [(a, b) for a, b, _ in PHYS_SHEETS], stats)
+    gws = wb.create_sheet("Guide")
+    qsheet(wb.create_sheet("Questions"), PHYS_QUESTIONS, "Answer in the yellow column. Short answers are fine.")
+
+    ws = wb.create_sheet("Volumes")
+    vol = [list(r[:10]) + [None, None, r[12], None, None] for r in s["fp"]] + [[None] * 15 for _ in range(10)]
+    table(ws, 1, s["fp_h"] + ["IPC checks per batch (Physical lab)", "Units tested per IPC check"],
+          vol, {4, 5, 6, 7, 8, 9, 10, 13, 14, 15}, [30, 30, 8, 12, 8, 10, 10, 12, 12, 12, 1, 1, 30, 14, 14],
+          {"H": '"Marketed,Pipeline / no formula,Discontinued"'})
+    for i in range(len(s["fp"]) + 2, len(vol) + 2):
+        for j in (1, 2, 3):
+            ws.cell(i, j).fill = INPUT
+    for col in ("K", "L"):   # study formula columns
+        ws.column_dimensions[col].hidden = True
+
+    ws = catalog_sheet(wb, [(code, name, instr, None) for code, (name, instr, _) in PHYS_CATALOG.items()])
+    ws.column_dimensions["E"].hidden = True   # no lab catalog times for physical tests
+    ws.add_data_validation(dv := DataValidation(type="list", formula1=PHYS_INSTR, allow_blank=True))
+    dv.add(f"C2:C{CAT_LAST}")
+
+    ws = wb.create_sheet("Test times")
+    table(ws, 1, s["tt_h"] + [OUTSOURCED, "Catalog code"], [row + [c] for row, c in zip(rows, codes)],
+          TT_INPUT, TT_WIDTHS + [9], PHYS_DV)
+    tt_auto(ws, 2, len(rows) + 1)
+    link_catalog(ws, codes)
+    for col in ("J", "R"):   # HPLC campaign group and dissolution bath: not used here, kept for paste-back by position
+        ws.column_dimensions[col].hidden = True
+
+    extra_tests_sheet(wb, s, "FP", types='"FP,RM,PM,IPC"', dv=PHYS_DV)
+    guide(gws, wb, PHYS_SHEETS, PHYS_RULES, PHYS_GENERAL)
+    return wb, dict(products=len(s["fp"]), fams=len(fams), rows=len(rows), forms=forms)
+
+
+# ---------------------------------------------------------------- Micro lab
+# Micro tests and monitoring samples, timed once on 'Test catalog'. code -> (name, equipment, compendial conditions)
+MIC_CATALOG = collections.OrderedDict([
+    ("ENUM", ("Microbial enumeration - TAMC + TYMC (<61> / <2021>)", "BSC + incubators", "TAMC 30-35 °C, 3-5 d; TYMC 20-25 °C, 5-7 d")),
+    ("ECOLI", ("Absence of Escherichia coli (<62> / <2022>)", "BSC + incubators", "Enrichment 30-35 °C 18-24 h; MacConkey broth 42-44 °C 24-48 h; MacConkey agar 30-35 °C 18-72 h")),
+    ("SALM", ("Absence of Salmonella (<62> / <2022>)", "BSC + incubators", "Enrichment 30-35 °C 18-24 h; RVS broth 30-35 °C 18-24 h; XLD agar 30-35 °C 18-48 h")),
+    ("PSAE", ("Absence of Pseudomonas aeruginosa (<62>)", "BSC + incubators", "Enrichment 30-35 °C 18-24 h; cetrimide agar 30-35 °C 18-72 h")),
+    ("SAUR", ("Absence of Staphylococcus aureus (<62>)", "BSC + incubators", "Enrichment 30-35 °C 18-24 h; mannitol salt agar 30-35 °C 18-72 h")),
+    ("BTGN", ("Bile-tolerant Gram-negative bacteria (<62> / <2021>)", "BSC + incubators", "Pre-incubation 20-25 °C ~2 h; EE broth 30-35 °C 24-48 h; VRBG agar 30-35 °C 18-24 h")),
+    ("CALB", ("Absence of Candida albicans (<62>)", "BSC + incubators", "Sabouraud broth 30-35 °C 3-5 d; Sabouraud agar 30-35 °C 24-48 h")),
+    ("PET", ("Antimicrobial effectiveness / preservative efficacy (<51>)", "BSC + incubators", "5 test organisms; 20-25 °C; reads at 14 and 28 d")),
+    ("BET", ("Bacterial endotoxins (<85>)", "Endotoxin reader / heating block", "Gel-clot 37 °C 60 min, or kinetic method")),
+    ("STER", ("Sterility (<71>)", "Isolator / cleanroom + incubators", "14 d incubation (FTM 30-35 °C, SCDM 20-25 °C)")),
+    ("WATER", ("Water - total count by membrane filtration (<1231>)", "Filtration manifold + incubators", "R2A 20-25 or 30-35 °C 5-7 d, or PCA 30-35 °C 3-5 d")),
+    ("WAT_SPEC", ("Water - specified organisms / coliforms (if in your specification)", "Filtration manifold + incubators", "Per your specification")),
+    ("EM_SET", ("Environmental monitoring - settle plate", "Incubators", "Per your EM procedure (e.g. 20-25 °C then 30-35 °C, 5-7 d)")),
+    ("EM_CON", ("Environmental monitoring - contact plate / surface swab", "Incubators", "Per your EM procedure")),
+    ("EM_AIR", ("Environmental monitoring - active air sample", "Air sampler + incubators", "Per your EM procedure")),
+    ("PERS", ("Personnel monitoring - glove / gown plates", "Incubators", "Per your EM procedure")),
+    ("GAS", ("Compressed air / gas - microbial sample", "Gas sampler + incubators", "Per your procedure")),
+    ("SWAB", ("Cleaning validation - microbial swab / rinse", "Incubators", "Per your procedure")),
+])
+MIC_TT_CODES = ("ENUM", "ECOLI", "SALM", "PSAE", "SAUR", "BTGN", "CALB", "PET", "BET", "STER")
+MIC_CAT_H = ["Code", "Test", "Equipment", "Compendial conditions (reference)", "Rows using it (auto)", "Setup analyst h / session",
+             "Prep + inoculation h/sample – MIN", "Prep + inoculation – MOST LIKELY", "Prep + inoculation – MAX",
+             "Reading + counting h / sample (all reads)", "Incubation days", "Plates / tubes per sample", "BSC / LAF h / sample",
+             "Data + doc h / sample", "Review h / sample", "Samples per session", OUTSOURCED, "Notes"]
+MIC_TT_H = ["Item (material / family)", "Type", "Description", "Test", "Applicable (Y/N)", "Lots / batches tested for micro (%)",
+            "Setup analyst h / session", "Prep + inoculation h/sample – MIN", "Prep + inoculation – MOST LIKELY",
+            "Prep + inoculation – MAX", "Prep PERT (auto)", "Reading + counting h / sample (all reads)", "Incubation days",
+            "Plates / tubes per sample", "BSC / LAF h / sample", "Data + doc h / sample", "Review h / sample",
+            "Samples per session", "Retest / OOS %", "Applies to stability (Y/N)", OUTSOURCED, "Respondent(s) / source",
+            "Confidence", "Notes / difficulty", "Catalog code", "Basis (USP-NF)"]
+MIC_TT_WIDTHS = [30, 6, 26, 34, 9, 10, 10, 10, 10, 10, 9, 10, 9, 9, 9, 10, 9, 9, 9, 10, 10, 16, 11, 30, 9, 40]
+MIC_LINK = {7: "F", 8: "G", 9: "H", 10: "I", 12: "J", 13: "K", 14: "L", 15: "M", 16: "N", 17: "O", 18: "P", 21: "Q"}
+MIC_DV = {"E": '"Y,N"', "T": '"Y,N"', "U": '"Y,N"', "W": '"High,Medium,Low"'}
+# Natural-origin materials without a USP-NF micro test: pre-set to Y (botanicals: USP <2023>).
+NATURAL = r"extract|ginseng|beet root|premix|gelatin|omega 3 powder"
+
+MIC_SHEETS = [("Overview", "Scope; your name and date.", "No."),
+              ("Guide", "Rules, and what each column means.", "No."),
+              ("Questions", "Respondent profile, samples & programmes, media and equipment, workload.", "No."),
+              ("Test catalog", "Time each micro test once (TAMC / TYMC, each specified organism, water, EM plates ...).",
+               "Only to give one test its own time (see 'One test needs its own time' above); do not sort or delete rows."),
+              ("Test times", "One row per raw material / product family x micro test: confirm Applicable and the % of lots tested.",
+               "No - set Applicable = N instead of deleting; missing tests go on 'Extra tests'. Sorting and filtering are fine."),
+              ("Monitoring", "Water, environmental, personnel, gas and swab programmes: points and samples per week.",
+               "Yes - 15 empty rows for other areas or systems."),
+              ("Support work", "Media, growth promotion, cultures, autoclave, identification, investigations ...: units per year and hours.",
+               "Yes - 10 empty rows."),
+              ("Extra tests", "Tests missing from Test times (other organisms, in-house tests, stability-only tests ...).",
+               "Yes - 40 empty rows.")]
+
+MIC_QUESTIONS = [("A. Respondent", [RESPONDENT[1][0],
+        ("A2", "Which work are you qualified for (plate count, membrane filtration, specified organisms, preservative efficacy, water and "
+               "EM sampling, media preparation, autoclave, identification, endotoxins, sterility)?", "Personnel C"),
+        ] + RESPONDENT[1][2:5] + [
+        ("A6", "Is any test or task done by only one qualified person? Is there a weekend / holiday rota for water or EM sampling, and how many people does it need?", "Report: key-person risk, coverage"),
+    ]),
+    ("B. Samples and programmes", [
+        ("B1", "Raw materials: is every lot tested for micro, or a reduced frequency (e.g. first 3 lots, then 1 in 5), or CoA only? "
+               "Which materials? (column F on 'Test times')", "Test times F"),
+        ("B2", "Finished products: every batch or reduced? At which stability time points are micro tests done?", "Test times F, T"),
+        ("B3", "Water: how many purified-water points, how often is each sampled, and who takes the samples? (enter on 'Monitoring')", "Monitoring"),
+        ("B4", "Environmental and personnel monitoring: which rooms, which plate types, how often, and are weekends included? (enter on 'Monitoring')", "Monitoring"),
+        ("B5", "Are sterility, endotoxin or other aseptic tests done at all (for products, water or suppliers)? If yes: samples per year and equipment.", "Extra tests"),
+    ]),
+    ("C. Media and equipment", [
+        ("C1", "Media: prepared in-house or bought ready-made? Batches per week; growth promotion on every lot?", "Support work"),
+        ("C2", "Incubators: how many, at which temperatures, how many plates each? Are they ever full? In which months?", "Report: incubator capacity"),
+        ("C3", "Autoclave(s): how many, cycles per day, shared with waste decontamination? Breakdowns in the last year?", "Report: autoclave"),
+        ("C4", "Biosafety cabinets / laminar-flow hoods: how many? Do you wait for a free cabinet? How often and how long?", "Evidence; Notes"),
+        ("C5", "Identification of isolates: done in-house (Gram stain, biochemical kits, instrument) or sent out? How many per year?", "Support work"),
+        ("C6", "How many days per month is each key item (incubator, autoclave, BSC, air sampler) down?", "Settings downtime"),
+    ]),
+    ("D. Workload and service level", [
+        ("D1", "Turnaround from sample receipt to micro result (days) for raw materials and products. Does the micro result set the release date? "
+               "Batches released late because of micro last year?", "Evidence E, F, G"),
+        ("D2", "How many samples are typically waiting or in incubation at month end? Which months are busiest?", "Evidence B, D"),
+        ("D3", "Non-routine work - number per year and hours each: (a) method suitability for new materials / products; (b) OOS and EM excursion "
+               "investigations; (c) disinfectant efficacy studies; (d) incubator mapping, autoclave and BSC qualification; (e) audits. "
+               "(enter on 'Support work')", "Support work"),
+        ("D4", "Which new products or materials in the next 2-3 years need micro testing (liquids, probiotics, botanicals, preserved products)?", "Products; Settings growth"),
+    ]),
+    ("E. Closing", [
+        ("E1", "If you had one more microbiologist, or one more incubator / autoclave / cabinet, what would change first?", "Report_Outline"),
+        ("E2", "What is the biggest risk to on-time micro results today?", "Report_Outline"),
+    ]),
+]
+
+MIC_GENERAL = [r for r in GENERAL_RULES if r[0] in ("Colours", "Outsourced tests", "Columns", "Adding rows")] + [
+    ("Units", "Times in HOURS (0.25 = 15 min) per sample unless the header says per session. Incubation in DAYS."),
+    ("Minimum effort", "Only 'Prep + inoculation – MOST LIKELY' and 'Reading + counting' are required; MIN and MAX are optional. Blank = not known."),
+    ("Incubation is not analyst time", "Analyst columns = hands-on time only (preparing, inoculating, reading, counting). Incubation goes in "
+     "'Incubation days': it fills incubators, not people. 'Reading + counting' covers all reads of one sample (e.g. day 3 and day 5)."),
+    ("Session", "A session = one set-up at the cabinet (media out, controls, cleaning before and after). Its setup time is counted once "
+     "for all samples of that session."),
+]
+MIC_RULES = [
+    ("Fill order", "1) Test catalog - each micro test is timed once and copied to every row that uses it. "
+     "2) Test times - confirm Applicable and the % of lots / batches tested. 3) Monitoring and Support work. 4) Questions."),
+] + cat_rules("one TAMC + TYMC test", ("TAMC + TYMC of botanical extracts", 60, "ENUM", 30, "ENUM_BOT"), "material or family",
+              "a product that needs extra dilution or neutralisation", "filter Test = Microbial enumeration, pick the extract rows") + [
+    ("Volumes", "Lots and batches per year are collected on the RM and FP questionnaires. Here give only the share tested for micro "
+     "in column F (blank = every lot / batch; 20 = one lot in five)."),
+    ("Pre-filled tests", "Raw materials: the micro tests in their USP-NF monograph; natural-origin materials without one (extracts, "
+     "premixes, gelatin) are pre-set to Y, the rest to N. Products: by dosage form (USP <1111>), plus Salmonella where the product "
+     "contains a botanical. Correct anything that differs from your specifications."),
+    ("Sterile work", "No sterile product is on the product list, so sterility and endotoxin rows are pre-set to N. If you run them, set Y and answer B5."),
+    ("Families", "A family = all strengths tested with the same methods. If one strength needs a different method, say so in Notes."),
+]
+
+MON_H = ["Programme", "Area / system / point group", "Grade / class", "Catalog code", "Points (number)", "Samples per point per week",
+         "Weeks per year (blank = 50)", "Samples / yr (auto)", "Sampling round analyst h (walk + sampling)", "Rounds per week",
+         "Weekend / holiday sampling (Y/N)", "Who samples (QC micro / production / engineering)", "Notes"]
+MON_ROWS = [("Water", "Purified water - generation / storage tank", "WATER"),
+            ("Water", "Purified water - distribution loop, points of use", "WATER"),
+            ("Water", "Purified water - specified organisms (if in your specification)", "WAT_SPEC"),
+            ("Water", "Potable / feed water", "WATER"),
+            ("Environment", "Production rooms (dispensing, granulation, compression, coating, filling, packaging)", "EM_SET"),
+            ("Environment", "Production rooms (dispensing, granulation, compression, coating, filling, packaging)", "EM_CON"),
+            ("Environment", "Production rooms (dispensing, granulation, compression, coating, filling, packaging)", "EM_AIR"),
+            ("Environment", "QC micro lab (cabinets, testing room)", "EM_SET"),
+            ("Environment", "QC micro lab (cabinets, testing room)", "EM_CON"),
+            ("Personnel", "Production operators / micro analysts", "PERS"),
+            ("Utilities", "Compressed air / nitrogen in product contact", "GAS"),
+            ("Cleaning validation", "Equipment swabs / rinses (microbial)", "SWAB")]
+SUP_H = ["Activity", "Unit", "Units / yr", "Analyst h / unit", "Equipment occupied", "Equipment h / unit", "Done by (QC micro / other)", "Notes"]
+SUP_ROWS = [("Culture media preparation (in-house)", "batch"), ("Ready-made media - receipt and check", "lot"),
+            ("Growth promotion test", "media lot"), ("Reference cultures - maintenance and subculture", "week"),
+            ("Autoclave - media sterilisation", "load"), ("Autoclave - waste decontamination", "load"),
+            ("Incubator / fridge temperature checks and cleaning", "week"), ("Lab cleaning and disinfection (incl. cabinets)", "week"),
+            ("Positive / negative controls (if not in the test times)", "session"), ("Method suitability - new material or product", "item"),
+            ("Identification of isolates (Gram stain, biochemical kit / instrument)", "isolate"),
+            ("Investigations - OOS, out-of-limit, EM excursions", "event"), ("Disinfectant efficacy study", "study"),
+            ("Equipment qualification (incubator mapping, autoclave, cabinet certification)", "item"),
+            ("Gowning / aseptic technique qualification", "person"), ("Training given and received", "week")]
+
+
+def load_usp_micro():
+    """data/usp_micro.csv (tools/usp_tests.py) -> material -> [(code, chapter, applicable, note)]."""
+    out = collections.defaultdict(list)
+    if os.path.exists(USP_MICRO):
+        for r in csv.DictReader(open(USP_MICRO, encoding="utf-8")):
+            out[r["material"]].append((r["code"], r["chapter"], r["applicable"], r["note"]))
+    return out
+
+
+def build_micro(s):
+    wb = Workbook()
+    usp = load_usp_micro()
+    fams, _, _ = campaign_candidates(s["fp"])
+    desc = {r[0]: r[2] for r in s["tt"] if r[1] == "FP"}
+    rows, codes = [], []
+
+    def add(item, kind, description, code, appl, stab, note, basis):
+        rows.append([item, kind, description, MIC_CATALOG[code][0], appl] + [None] * 14 + [stab, None, None, None, note, code, basis])
+        codes.append(code)
+
+    n_usp = n_nat = 0
+    for r in s["rm"]:
+        mat, cat = r[0], r[1]
+        if usp.get(mat):
+            n_usp += 1
+            for code, ch, appl, note in usp[mat]:
+                if code in ("BET", "STER"):   # no sterile product on the product list
+                    appl, note = "N", note or "No sterile product on the product list - set Y if you run it"
+                add(mat, "RM", cat, code, appl, None, note or None, "USP-NF monograph" + (f" <{ch.replace(',', '>, <')}>" if ch else ""))
+        elif re.search(NATURAL, mat.lower()):
+            n_nat += 1
+            for code in ("ENUM", "ECOLI", "SALM"):
+                add(mat, "RM", cat, code, "Y", None, None, "Natural origin, no USP-NF micro test - confirm (USP <2023>)")
+        else:
+            add(mat, "RM", cat, "ENUM", "N", None, None, "No micro test in USP-NF - set Y if your specification has one")
+    n_rm = len(rows)
+    for fid, f in fams.items():
+        botanical, seen = any(re.search(NATURAL, a.lower()) for a in f["actives"]), set()
+        for form in sorted(f["form"]):
+            if form == "Nasal spray":
+                tests = [("ENUM", "Y"), ("SAUR", "N"), ("PSAE", "N"), ("PET", "Y")]
+                basis = "USP <1111> nasal use: TAMC, TYMC, absence of S. aureus and P. aeruginosa; <51> for a preserved product"
+            else:
+                tests = [("ENUM", "Y"), ("ECOLI", "N")] + ([("SALM", "N")] if botanical else [])
+                basis = "USP <1111> oral solid: TAMC, TYMC, absence of E. coli" + ("; <2023> botanical: absence of Salmonella" if botanical else "")
+            for code, stab in tests:
+                if code not in seen:
+                    seen.add(code)
+                    add(fid, "FP", desc.get(fid, form), code, "Y", stab,
+                        "Usually stability / validation batches only - give the % in column F" if code == "PET" else None, basis)
+
+    by_code = collections.Counter(c for c, r in zip(codes, rows) if r[1] == "RM" and r[4] == "Y")
+    stats = [f"{len(s['rm'])} raw materials on the master list: {n_usp} have a micro test in their USP-NF monograph, {n_nat} more are of "
+             "natural origin (extracts, premixes, gelatin) and pre-set to Y; the rest have one enumeration row set to N.",
+             f"{len(fams)} finished-product families ({len(s['fp'])} products) with tests by dosage form.",
+             f"{len(rows)} item x test rows; {len(MIC_CATALOG)} micro tests and monitoring samples are timed once on 'Test catalog'.",
+             "Water, environmental and personnel monitoring go on 'Monitoring'; media, cultures, autoclave and other support work on 'Support work'.",
+             "No recorded micro test times exist yet, so all times are new estimates."]
+    overview(wb, "Micro Lab Analyst Questionnaire", "QC Microbiology Laboratory - raw materials, finished products, water and environmental monitoring",
+             [("Who fills it", "Each microbiologist (2-3 people). Each person fills a separate copy."),
+              ("Time needed", "About 2 hours: questions 20 min, test catalog 30 min, the rest on the tables.")],
+             [(a, b) for a, b, _ in MIC_SHEETS], stats)
+    gws = wb.create_sheet("Guide")
+    qsheet(wb.create_sheet("Questions"), MIC_QUESTIONS, "Answer in the yellow column. Short answers are fine.")
+
+    ws = wb.create_sheet("Test catalog")
+    cat = [[code, name, eq, cond, f"=COUNTIFS('Test times'!$Y:$Y,$A{i},'Test times'!$E:$E,\"Y\")+COUNTIF(Monitoring!$D:$D,$A{i})"]
+           + [None] * 13 for i, (code, (name, eq, cond)) in enumerate(MIC_CATALOG.items(), 2)]
+    table(ws, 1, MIC_CAT_H, cat, set(range(6, 19)), [10, 44, 22, 40, 8, 10, 10, 10, 10, 10, 9, 9, 9, 10, 9, 9, 10, 30], {"Q": '"Y,N"'})
+    grey_out(ws, '$Q2="Y"')
+
+    ws = wb.create_sheet("Test times")
+    table(ws, 1, MIC_TT_H, rows, set(range(5, 26)) - {11}, MIC_TT_WIDTHS, MIC_DV)
+    for r in range(2, len(rows) + 2):
+        ws.cell(r, 11, f'=IF(I{r}="","",IF(OR(H{r}="",J{r}=""),I{r},(H{r}+4*I{r}+J{r})/6))').number_format = "0.00"
+        ws.cell(r, 19).number_format = "0%"
+    link_catalog(ws, codes, MIC_LINK, "Y")
+    grey_out(ws, '$E2="N"', '$U2="Y"')
+
+    ws = wb.create_sheet("Monitoring")
+    mon = [[p, a, None, c] + [None] * 9 for p, a, c in MON_ROWS] + [[None] * 13 for _ in range(15)]
+    table(ws, 1, MON_H, mon, {3, 5, 6, 7, 9, 10, 11, 12, 13}, [16, 44, 12, 11, 9, 10, 10, 10, 12, 9, 11, 18, 30],
+          {"D": '"' + ",".join(MIC_CATALOG) + '"', "K": '"Y,N"'})
+    for r in range(2, len(mon) + 2):
+        ws.cell(r, 8, f'=IF(OR(E{r}="",F{r}=""),"",E{r}*F{r}*IF(G{r}="",50,G{r}))').fill = AUTO
+        if r > len(MON_ROWS) + 1:
+            for j in (1, 2, 4):
+                ws.cell(r, j).fill = INPUT
+
+    ws = wb.create_sheet("Support work")
+    sup = [[a, u] + [None] * 6 for a, u in SUP_ROWS] + [[None] * 8 for _ in range(10)]
+    table(ws, 1, SUP_H, sup, {3, 4, 5, 6, 7, 8}, [52, 12, 10, 10, 22, 10, 18, 30])
+    for r in range(len(SUP_ROWS) + 2, len(sup) + 2):
+        for j in (1, 2):
+            ws.cell(r, j).fill = INPUT
+
+    ws = wb.create_sheet("Extra tests")
+    table(ws, 1, MIC_TT_H[:-2], [[None] * 24 for _ in range(40)], set(range(1, 25)) - {11}, MIC_TT_WIDTHS,
+          dict(MIC_DV, B='"RM,FP,Water,EM,Other"'))
+    for r in range(2, 42):
+        ws.cell(r, 11, f'=IF(I{r}="","",IF(OR(H{r}="",J{r}=""),I{r},(H{r}+4*I{r}+J{r})/6))').number_format = "0.00"
+    grey_out(ws, '$E2="N"', '$U2="Y"')
+
+    guide(gws, wb, MIC_SHEETS, MIC_RULES, MIC_GENERAL)
+    return wb, dict(rm=len(s["rm"]), n_usp=n_usp, n_nat=n_nat, fams=len(fams), products=len(s["fp"]), rows=len(rows),
+                    by_code=by_code, usp=usp)
+
+
 # ---------------------------------------------------------------- Markdown
 def md_questions(sections):
     o = []
@@ -939,16 +1372,18 @@ def md_questions(sections):
     return o
 
 
-def write_md(path, title_, area, who, sheets, facts, sections, extra):
+USED = ("Your answers give the time each test takes and how many samples arrive, which shows how busy the lab and its "
+        "instruments are and whether more staff or instruments are needed. "
+        "Times are asked as minimum / most likely / maximum, and hands-on analyst time is kept apart from unattended instrument time. "
+        "Do not insert, delete or reorder columns in the workbook.")
+
+
+def write_md(path, title_, area, who, sheets, facts, sections, extra, used=USED):
     o = [f"# {title_}", "",
          "**Analyst edition** of the *QC Laboratory Capacity, Staffing Gap and CAPEX Assessment*.", "",
          f"- **Area:** {area}", f"- **Who fills it:** {who}",
          f"- **Working file:** `{os.path.basename(path)[:-3]}.xlsx` — the tables are only in the workbook; this page lists the questions and explains the sheets.", "",
-         "## How the answers are used", "",
-         "Your answers give the time each test takes and how many samples arrive, which shows how busy the lab and its "
-         "instruments are and whether more staff or instruments are needed. "
-         "Times are asked as minimum / most likely / maximum, and hands-on analyst time is kept apart from unattended instrument time. "
-         "Do not insert, delete or reorder columns in the workbook.", "",
+         "## How the answers are used", "", used, "",
          "## Workbook sheets", "", "| Sheet | What to do |", "|---|---|"]
     o += [f"| {a} | {b} |" for a, b in sheets]
     o += ["", "## Pre-filled data", ""] + [f"- {f}" for f in facts] + [""] + extra
@@ -961,8 +1396,12 @@ def main():
     s, lead, raw = load_study(), load_leadtime(), load_raw()
     rm_wb, rm = build_rm(s, lead, raw, load_db_mapping())
     fp_wb, fp = build_fp(s)
+    ph_wb, ph = build_phys(s)
+    mi_wb, mi = build_micro(s)
     rm_wb.save(os.path.join(OUT, "RM_Analyst_Questionnaire.xlsx"))
     fp_wb.save(os.path.join(OUT, "FP_Analyst_Questionnaire.xlsx"))
+    ph_wb.save(os.path.join(OUT, "Physical_Analyst_Questionnaire.xlsx"))
+    mi_wb.save(os.path.join(OUT, "Micro_Analyst_Questionnaire.xlsx"))
 
     write_md(os.path.join(OUT, "RM_Analyst_Questionnaire.md"), "Raw Material Analyst Questionnaire",
              "QC Chemical Laboratory — raw materials", "each analyst testing incoming materials (2–3 people, one copy each)",
@@ -990,21 +1429,75 @@ def main():
              [("Guide", "Rules, which sheets take new rows, and what every column means."),
               ("Questions", "Answer sections A–E below."),
               ("Volumes", "Release batches/yr and stability samples/yr per product, now and future; stability time points; IPC samples."),
-              ("Test catalog", f"Time each general test once ({len(FP_CATALOG)} tests: appearance, weight, hardness, friability, disintegration, water, pH, fill)."),
+              ("Test catalog", f"Time each general test once ({len(FP_CATALOG)} tests: appearance, water content, pH)."),
               ("Test times", f"{fp['rows']} family × test rows (assay, related substances, dissolution, CU, ID, and the general tests by dosage form)."),
               ("Campaign groups", f"{len(fp['camp'])} actives shared by more than one family: can they share an HPLC sequence?"),
-              ("Extra tests", "Add tests that are missing (blend uniformity, KF, preservative assay, delivered dose).")],
+              ("Extra tests", "Add tests that are missing (blend uniformity, preservative assay, delivered-dose assay).")],
              [f"{fp['products']} products in {fp['fams']} method families; dosage forms: "
               + ", ".join(f"{c} {n}" for n, c in fp["forms"].most_common()) + ".",
               f"{len(fp['no_active'])} families have no active ingredient in the product formulas ({', '.join(fp['no_active'])}); the analyst is asked to name them.",
               "Families group strengths that share methods, so times are asked once per family, not per product.",
+              "Physical tests (weight, dimensions, hardness, brittleness, friability, disintegration, fill volume, IPC checks) "
+              "are on the Physical lab questionnaire; microbial tests on the Micro lab questionnaire.",
               "There is no recorded time catalogue for finished products; every time on this questionnaire is a new estimate."],
              FP_QUESTIONS,
              ["### Most-shared actives (campaign candidates)", "", "| Active | Families |", "|---|---|"]
              + [f"| {a} | {f} |" for a, _, f, *_ in fp["camp"][:12]] + [""])
+    write_md(os.path.join(OUT, "Physical_Analyst_Questionnaire.md"), "Physical Lab Analyst Questionnaire",
+             "QC Physical Laboratory — finished products (release, stability, in-process checks)",
+             "each analyst running physical tests (2–3 people, one copy each)",
+             [("Guide", "Rules, which sheets take new rows, and what every column means."),
+              ("Questions", "Answer sections A–E below."),
+              ("Volumes", "In-process checks per batch and units per check for each product; release and stability numbers if known."),
+              ("Test catalog", f"Time each physical test once ({len(PHYS_CATALOG)} tests: "
+               + ", ".join(n.split(" (")[0].split(" /")[0].lower() for n, _, _ in PHYS_CATALOG.values()) + ")."),
+              ("Test times", f"{ph['rows']} family × test rows, chosen by dosage form."),
+              ("Extra tests", "Add tests that are missing: raw-material (particle size, bulk / tapped density), packaging "
+               "(dimensions, leak test), dissolution bath work.")],
+             [f"{ph['products']} products in {ph['fams']} method families; dosage forms: "
+              + ", ".join(f"{c} {n}" for n, c in ph["forms"].most_common()) + ".",
+              "Families group strengths that share methods, so times are asked once per family, not per product.",
+              "If one tablet tester measures weight, thickness, diameter and hardness in one run, the run is timed once (on hardness).",
+              "Assay, dissolution finish, water and pH are on the Chemical lab questionnaires; microbial tests on the Micro lab questionnaire.",
+              "There is no recorded time catalogue for physical tests; every time on this questionnaire is a new estimate."],
+             PHYS_QUESTIONS,
+             ["### Physical tests by dosage form", "", "| Dosage form | Tests |", "|---|---|"]
+             + [f"| {f} | " + ", ".join(PHYS_CATALOG[c][0] for c in cs) + " |" for f, cs in PHYS_FORM_TESTS.items()] + [""])
+
+    usp_rows = [(m, ", ".join(MIC_CATALOG[c][0].split(" (")[0].replace("Absence of ", "").replace("Microbial enumeration - ", "")
+                             for c, _, a, _ in t if a == "Y" and c not in ("BET", "STER"))) for m, t in mi["usp"].items()]
+    write_md(os.path.join(OUT, "Micro_Analyst_Questionnaire.md"), "Micro Lab Analyst Questionnaire",
+             "QC Microbiology Laboratory — raw materials, finished products, water and environmental monitoring",
+             "each microbiologist (2–3 people, one copy each)",
+             [("Guide", "Rules, which sheets take new rows, and what every column means."),
+              ("Questions", "Answer sections A–E below."),
+              ("Test catalog", f"Time each micro test once ({len(MIC_CATALOG)} tests and monitoring samples): hands-on time, "
+               "incubation days, plates per sample, cabinet time."),
+              ("Test times", f"{mi['rows']} raw material / product family × micro test rows: confirm Applicable and the % of lots tested."),
+              ("Monitoring", "Water, environmental, personnel, compressed-air and swab programmes: points, samples per week, sampling rounds."),
+              ("Support work", "Media, growth promotion, cultures, autoclave, identification, investigations, qualification: units per year and hours."),
+              ("Extra tests", "Add tests that are missing (other organisms, in-house tests, stability-only tests).")],
+             [f"{mi['rm']} raw materials on the master list: {mi['n_usp']} have a micro test in their USP–NF monograph; "
+              f"{mi['n_nat']} more are of natural origin (extracts, premixes, gelatin) and pre-set to Y; the rest have one row set to N.",
+              f"{mi['fams']} finished-product families ({mi['products']} products): TAMC / TYMC and E. coli for oral solids, plus Salmonella "
+              "where the product contains a botanical; S. aureus, P. aeruginosa and preservative efficacy for the nasal spray (USP <1111>, <51>).",
+              "Lots and batches per year come from the RM and FP questionnaires; this one asks only the share tested for micro.",
+              "Incubation is asked in days and kept apart from analyst time: it fills incubators, not people.",
+              "Sterility and endotoxin tests are pre-set to N: no sterile product is on the product list.",
+              "There is no recorded time catalogue for micro tests; every time on this questionnaire is a new estimate."],
+             MIC_QUESTIONS,
+             ["### Raw materials with a micro test in USP–NF", "", "| Material | Tests (pre-set Y) |", "|---|---|"]
+             + [f"| {m} | {t or 'none (endotoxins / sterility for parenteral grades only)'} |" for m, t in usp_rows] + [""],
+             "Your answers give the hands-on time of each micro test, how long it fills incubators and cabinets, and how many "
+             "samples arrive, which shows how busy the lab and its equipment are and whether more staff or equipment are needed. "
+             "Times are asked as minimum / most likely / maximum, and incubation is kept apart from analyst time. "
+             "Do not insert, delete or reorder columns in the workbook.")
     print(f"RM: {rm['mats']} materials, {rm['mapped']} with monograph, {rm['rows']} test rows, catalog {rm['cat']}, "
           f"suggested {rm['sugg']}, other names {rm['other']}")
     print(f"FP: {fp['products']} products, {fp['fams']} families, {fp['rows']} test rows, {len(fp['camp'])} shared actives")
+    print(f"Physical: {ph['fams']} families, {ph['rows']} test rows, catalog {len(PHYS_CATALOG)}")
+    print(f"Micro: {mi['n_usp']} RM with USP micro, {mi['n_nat']} natural origin, {mi['rows']} test rows, catalog {len(MIC_CATALOG)}, "
+          f"RM rows set Y by code {dict(mi['by_code'])}")
     missing = [(k, n) for k, ns in ALIASES.items() for n in ns if n not in lead]
     if missing:
         print("WARNING alias targets not found:", missing)

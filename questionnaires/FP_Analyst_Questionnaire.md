@@ -17,16 +17,17 @@ Your answers give the time each test takes and how many samples arrive, which sh
 | Guide | Rules, which sheets take new rows, and what every column means. |
 | Questions | Answer sections A–E below. |
 | Volumes | Release batches/yr and stability samples/yr per product, now and future; stability time points; IPC samples. |
-| Test catalog | Time each general test once (8 tests: appearance, weight, hardness, friability, disintegration, water, pH, fill). |
-| Test times | 691 family × test rows (assay, related substances, dissolution, CU, ID, and the general tests by dosage form). |
+| Test catalog | Time each general test once (3 tests: appearance, water content, pH). |
+| Test times | 449 family × test rows (assay, related substances, dissolution, CU, ID, and the general tests by dosage form). |
 | Campaign groups | 13 actives shared by more than one family: can they share an HPLC sequence? |
-| Extra tests | Add tests that are missing (blend uniformity, KF, preservative assay, delivered dose). |
+| Extra tests | Add tests that are missing (blend uniformity, preservative assay, delivered-dose assay). |
 
 ## Pre-filled data
 
 - 107 products in 64 method families; dosage forms: 96 Tablet, 7 Capsule, 2 Sachet, 1 Nasal spray, 1 not stated.
 - 7 families have no active ingredient in the product formulas (F22, F37, F41, F42, F60, F62, F63); the analyst is asked to name them.
 - Families group strengths that share methods, so times are asked once per family, not per product.
+- Physical tests (weight, dimensions, hardness, brittleness, friability, disintegration, fill volume, IPC checks) are on the Physical lab questionnaire; microbial tests on the Micro lab questionnaire.
 - There is no recorded time catalogue for finished products; every time on this questionnaire is a new estimate.
 
 ### Most-shared actives (campaign candidates)
@@ -65,7 +66,7 @@ Your answers give the time each test takes and how many samples arrive, which sh
 |---|---|---|
 | B1 | How many release batches does each family produce per year now, and per the production plan in 2-3 years? (enter on 'Volumes') | |
 | B2 | Stability: which conditions and time points are on the protocol (e.g. 0/3/6/9/12/18/24/36 months, 25/60 and 40/75)? How many stability samples tested per year? | |
-| B3 | Are in-process controls (blend uniformity, core weight, hardness, LOD) done by QC or by production? Samples per batch and hours? | |
+| B3 | Are in-process chemical tests (blend uniformity, LOD / water of granules) done by QC or by production? Samples per batch and hours? (Weight, hardness and thickness checks are on the Physical lab questionnaire.) | |
 | B4 | How many process/cleaning validation and swab samples per year? Analyst and HPLC hours each? | |
 
 ### C. Methods and instruments
